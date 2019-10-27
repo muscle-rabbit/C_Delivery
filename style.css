@@ -1,0 +1,38 @@
+body {
+  width: 800px;
+  margin: auto;
+}
+
+header {
+  display: flex;
+  height: 150px;
+  width: 100%;
+  justify-content: center;
+}
+
+.header__inner-wrap {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 600px;
+  position: relative;
+}
+
+.header__logo {
+  position: absolute;
+  height: 80px;
+  width: 160px;
+  left: 0px;
+}
+
+.header__title {
+  margin-bottom: 0px;
+}
+
+.content {
+  margin-top: 30px;
+}
+
+.content-section {
+  margin-bottom: 50px;
+}
