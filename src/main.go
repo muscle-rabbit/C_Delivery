@@ -23,7 +23,6 @@ func main() {
 	}
 
 	bot, err = linebot.New(os.Getenv("CHANNEL_SECRET"), os.Getenv("CHANNEL_TOKEN"))
-	log.Println("Bot:", bot, " err:", err)
 	http.HandleFunc("/callback", callbackHandler)
 	port := os.Getenv("PORT")
 	addr := fmt.Sprintf(":%s", port)
@@ -49,6 +48,9 @@ func callbackHandler(w http.ResponseWriter, r *http.Request) {
 				quota, err := bot.GetMessageQuota().Do()
 				if err != nil {
 					log.Println("Quota err:", err)
+				}
+				if _, err = bot.ReplyMessage(event.ReplyToken, messages.ReplyMenu(bot)).Do(); err != nil {
+					log.Print(err)
 				}
 				if _, err = bot.ReplyMessage(event.ReplyToken, messages.ReplyReservationDate(bot)).Do(); err != nil {
 					log.Print(err)

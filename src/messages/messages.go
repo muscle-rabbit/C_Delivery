@@ -3,8 +3,16 @@ package messages
 import (
 	"fmt"
 	"github.com/line/line-bot-sdk-go/linebot"
+	"log"
+	"strconv"
 	"time"
 )
+
+type Item struct {
+	Name     string
+	Price    int
+	ImageURL string
+}
 
 // ReplyReservationDate は 注文日程指定用のメッセージを返すメソッドです。
 func ReplyReservationDate(bot *linebot.Client) *linebot.TemplateMessage {
@@ -43,4 +51,31 @@ func ReplyReservationTime(bot *linebot.Client) *linebot.TemplateMessage {
 
 	message := linebot.NewTemplateMessage("日程指定", template)
 	return message
+}
+
+// ReplyMenu は 商品指定用のメッセージを返すメソッドです。
+func ReplyMenu(bot *linebot.Client) *linebot.TemplateMessage {
+	items := []Item{
+		{"鳥唐揚弁当", 360, "https://takuma-life.jp/wp-content/uploads/2018/05/IMG_1506-1.jpg"},
+		{"のり弁当", 300, "https://cdn-ak.f.st-hatena.com/images/fotolife/p/pegaman/20190119/20190119204845.jpg"},
+		{"シャケ弁当", 400, "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRMaV54QCJVdR1ZzHIcw2EMvehZEf_5KiizJhY7B_BvqDlGSklI&s"},
+		{"烏龍茶", 150, "https://i.ibb.co/QNzQBRn/Screen-Shot-2019-10-28-at-12-43-51.png"},
+		{"コカコーラ", 150, "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcScSLdxny37CL0tK4ADpnEVPjwX5jVWuHpxVmfcCt1DSreBG7iF1A&s"},
+	}
+	marginLeftForName := "                "
+	marginLeftForPrice := "                       "
+	var columns []*linebot.CarouselColumn
+	for _, item := range items {
+		columns = append(columns, linebot.NewCarouselColumn(
+			item.ImageURL, fmt.Sprintf("%s%s", marginLeftForName, item.Name), fmt.Sprintf("%s¥%s", marginLeftForPrice, strconv.Itoa(item.Price)),
+			linebot.NewMessageAction("これにする", item.Name),
+		))
+
+	}
+	template := linebot.NewCarouselTemplate(
+		columns...,
+	)
+	log.Println("in message before return.")
+	return linebot.NewTemplateMessage("メニュー指定", template)
+	return linebot.NewTemplateMessage("日程指定", template)
 }
