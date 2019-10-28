@@ -79,7 +79,30 @@ func ReplyMenu(bot *linebot.Client) *linebot.TemplateMessage {
 	return linebot.NewTemplateMessage("メニュー指定", template)
 }
 
+// ReplyLocation は 発送先用のメッセージを返すメソッドです。
 func ReplyLocation(bot *linebot.Client) *linebot.TemplateMessage {
 	locations := []string{"8号間 2F 中央広場"}
-	return linebot.NewTemplateMessage("日程指定", template)
+	title := "発送先指定"
+	phrase := "発送先を選択下さい。"
+
+	// このエラーが解けない
+	// cannot use actions (variable of type []*linebot.MessageAction) as []linebot.TemplateAction value in argument to linebot.NewButtonsTemplate
+
+	// var actions []*linebot.MessageAction
+	// for _, location := range locations {
+	// 	actions = append(actions,
+	// 		linebot.NewMessageAction(location, location),
+	// 	)
+	// }
+
+	// template := linebot.NewButtonsTemplate(
+	// 	"", title, phrase,
+	// 	actions...,
+	// )
+
+	template := linebot.NewButtonsTemplate(
+		"", title, phrase,
+		linebot.NewMessageAction(locations[0], locations[0]),
+	)
+	return linebot.NewTemplateMessage(title, template)
 }
