@@ -77,5 +77,9 @@ func ReplyMenu(bot *linebot.Client) *linebot.TemplateMessage {
 	)
 	log.Println("in message before return.")
 	return linebot.NewTemplateMessage("メニュー指定", template)
+}
+
+func ReplyLocation(bot *linebot.Client) *linebot.TemplateMessage {
+	locations := []string{"8号間 2F 中央広場"}
 	return linebot.NewTemplateMessage("日程指定", template)
 }
