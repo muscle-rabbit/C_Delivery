@@ -152,3 +152,9 @@ func ReplyConfirmationButton(bot *linebot.Client) *linebot.TemplateMessage {
 
 	return linebot.NewTemplateMessage("ご注文確認", confirmationTemplate)
 }
+
+// ReplyThankYou は お礼メッセージを送信するメソッドです。
+func ReplyThankYou(bot *linebot.Client) *linebot.TextMessage {
+	message := "ご注文ありがとうございました。\n\n当日は現金をご用意の上\n所定の場所にお集まりください。\n\nまたのご利用お待ちしております。"
+	return linebot.NewTextMessage(message)
+}

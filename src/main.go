@@ -49,6 +49,9 @@ func callbackHandler(w http.ResponseWriter, r *http.Request) {
 				if err != nil {
 					log.Println("Quota err:", err)
 				}
+				if _, err = bot.ReplyMessage(event.ReplyToken, messages.ReplyThankYou(bot)).Do(); err != nil {
+					log.Print(err)
+				}
 				if _, err = bot.ReplyMessage(event.ReplyToken, messages.ReplyConfirmationText(bot), messages.ReplyConfirmationButton(bot)).Do(); err != nil {
 					log.Print(err)
 				}
