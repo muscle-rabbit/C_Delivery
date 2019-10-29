@@ -1,4 +1,11 @@
 .DS_Store
 design/*
-assets/*
-src/.env
+
+# lp
+lp/assets/
+
+# client
+*/.env
+
+# server
+firebase_credential/
