@@ -3,7 +3,6 @@ package messages
 import (
 	"fmt"
 	"github.com/line/line-bot-sdk-go/linebot"
-	"log"
 	"strconv"
 	"time"
 )
@@ -75,7 +74,6 @@ func ReplyMenu(bot *linebot.Client) *linebot.TemplateMessage {
 	template := linebot.NewCarouselTemplate(
 		columns...,
 	)
-	log.Println("in message before return.")
 	return linebot.NewTemplateMessage("メニュー指定", template)
 }
 
@@ -105,4 +103,52 @@ func ReplyLocation(bot *linebot.Client) *linebot.TemplateMessage {
 		linebot.NewMessageAction(locations[0], locations[0]),
 	)
 	return linebot.NewTemplateMessage(title, template)
+}
+
+type Order struct {
+	date     string
+	time     string
+	location string
+	items    []Item
+}
+
+// ReplyConfirmationText は 注文確認テキスト用メッセージを送信するメソッドです。
+func ReplyConfirmationText(bot *linebot.Client) *linebot.TextMessage {
+	// TODO: あとで消して、注文データはデータベースに保存するようにする。
+	order := Order{"11/1", "12:00~12:30", "8号館中央広場", []Item{
+		{"鳥唐揚弁当", 360, "https://takuma-life.jp/wp-content/uploads/2018/05/IMG_1506-1.jpg"},
+		{"のり弁当", 300, "https://cdn-ak.f.st-hatena.com/images/fotolife/p/pegaman/20190119/20190119204845.jpg"},
+		{"シャケ弁当", 400, "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRMaV54QCJVdR1ZzHIcw2EMvehZEf_5KiizJhY7B_BvqDlGSklI&s"},
+		{"烏龍茶", 150, "https://i.ibb.co/QNzQBRn/Screen-Shot-2019-10-28-at-12-43-51.png"},
+		{"コカコーラ", 150, "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcScSLdxny37CL0tK4ADpnEVPjwX5jVWuHpxVmfcCt1DSreBG7iF1A&s"},
+	}}
+	// TODO: あとで消す
+	var menu string
+	var price int
+
+	for i, item := range order.items {
+		if i == 0 {
+			menu = item.Name
+		} else {
+			menu += ", " + item.Name
+		}
+		price += item.Price
+	}
+	orderDetail := fmt.Sprintf("ご注文内容確認\n\n1. 日時 : %s\n2. 時間 : %s\n3. 発送場所: %s\n3. 品物 : %s\n4. お会計: ¥%d",
+		order.date, order.time, order.location, menu, price)
+
+	return linebot.NewTextMessage(orderDetail)
+}
+
+// ReplyConfirmationButton は 注文確認テキスト用ボタンを送信するメソッドです。
+func ReplyConfirmationButton(bot *linebot.Client) *linebot.TemplateMessage {
+
+	title := "ご注文は、こちらでお間違いありませんか？"
+	confirmationTemplate := linebot.NewConfirmTemplate(
+		title,
+		linebot.NewMessageAction("はい", "はい"),
+		linebot.NewMessageAction("いいえ", "いいえ"),
+	)
+
+	return linebot.NewTemplateMessage("ご注文確認", confirmationTemplate)
 }
