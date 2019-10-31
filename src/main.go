@@ -15,9 +15,8 @@ var c client
 var sessionStore sessions.Store
 
 func main() {
-	var err error
 
-	err = godotenv.Load()
+	err := godotenv.Load()
 	if err != nil {
 		log.Fatal("Error loading .env file")
 	}
@@ -55,19 +54,10 @@ func callbackHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			switch message := event.Message.(type) {
 			case *linebot.TextMessage:
-				// quota, err := c.bot.GetMessageQuota().Do()
-				// if err := (event, bot); err != nil {
-				// 	log.Fatal(err)
-				// }
-				c.reply(event)
-
-				if err != nil {
-					log.Println("Quota err:", err)
+				if err := c.reply(event); err != nil {
+					log.Fatal(err)
 				}
 				fmt.Printf("Message from user is: %s", message.Text)
-
-				// if _, err = bot.ReplyMessage(event.ReplyToken, linebot.NewTextMessage(message.ID+":"+message.Text+" OK! remain message:"+strconv.FormatInt(quota.Value, 10))).Do(); err != nil {
-				// }
 			}
 		}
 	}
