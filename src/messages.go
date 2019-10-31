@@ -1,10 +1,11 @@
-package messages
+package main
 
 import (
 	"fmt"
-	"github.com/line/line-bot-sdk-go/linebot"
 	"strconv"
 	"time"
+
+	"github.com/line/line-bot-sdk-go/linebot"
 )
 
 type Item struct {
@@ -13,10 +14,9 @@ type Item struct {
 	ImageURL string
 }
 
-// ReplyReservationDate は 注文日程指定用のメッセージを返すメソッドです。
-func ReplyReservationDate(bot *linebot.Client) *linebot.TemplateMessage {
+// makeReservationDateMessage は 注文日程指定用のメッセージを返すメソッドです。
+func makeReservationDateMessage() *linebot.TemplateMessage {
 	// 現状対応できるのは注文日を含めた二日間のみ。従業員が増えたら随時更新していく。 (2019/10/28)
-
 	wdays := [...]string{"日", "月", "火", "水", "木", "金", "土"}
 	title := "日程指定"
 	phrase := "ご注文日をお選びください。"
@@ -34,8 +34,8 @@ func ReplyReservationDate(bot *linebot.Client) *linebot.TemplateMessage {
 	return message
 }
 
-// ReplyReservationTime は 注文時間指定用のメッセージを返すメソッドです。
-func ReplyReservationTime(bot *linebot.Client) *linebot.TemplateMessage {
+// makeReservationTimeMessage は 注文時間指定用のメッセージを返すメソッドです。
+func makeReservationTimeMessage() *linebot.TemplateMessage {
 	lastOrder := "12:30"
 	title := "時間指定"
 	phrase := "ご注文時間をお選びください。\nラストオーダー: " + lastOrder
@@ -52,8 +52,13 @@ func ReplyReservationTime(bot *linebot.Client) *linebot.TemplateMessage {
 	return message
 }
 
-// ReplyMenu は 商品指定用のメッセージを返すメソッドです。
-func ReplyMenu(bot *linebot.Client) *linebot.TemplateMessage {
+// makeMenuText は 商品指定用のテキストメッセージを返すメソッドです。
+func makeMenuTextMessage() *linebot.TextMessage {
+	return linebot.NewTextMessage("ご注文品をお選びください。")
+}
+
+// makeMenu は 商品指定用の写真付きカルーセルを返すメソッドです。
+func makeMenuMessage() *linebot.TemplateMessage {
 	items := []Item{
 		{"鳥唐揚弁当", 360, "https://takuma-life.jp/wp-content/uploads/2018/05/IMG_1506-1.jpg"},
 		{"のり弁当", 300, "https://cdn-ak.f.st-hatena.com/images/fotolife/p/pegaman/20190119/20190119204845.jpg"},
@@ -77,8 +82,8 @@ func ReplyMenu(bot *linebot.Client) *linebot.TemplateMessage {
 	return linebot.NewTemplateMessage("メニュー指定", template)
 }
 
-// ReplyLocation は 発送先用のメッセージを返すメソッドです。
-func ReplyLocation(bot *linebot.Client) *linebot.TemplateMessage {
+// makeLocation は 発送先用のメッセージを返すメソッドです。
+func makeLocationMessage() *linebot.TemplateMessage {
 	locations := []string{"8号間 2F 中央広場"}
 	title := "発送先指定"
 	phrase := "発送先を選択下さい。"
@@ -112,8 +117,8 @@ type Order struct {
 	items    []Item
 }
 
-// ReplyConfirmationText は 注文確認テキスト用メッセージを送信するメソッドです。
-func ReplyConfirmationText(bot *linebot.Client) *linebot.TextMessage {
+// makeConfirmationText は 注文確認テキスト用メッセージを返すメソッドです。
+func makeConfirmationTextMessage() *linebot.TextMessage {
 	// TODO: あとで消して、注文データはデータベースに保存するようにする。
 	order := Order{"11/1", "12:00~12:30", "8号館中央広場", []Item{
 		{"鳥唐揚弁当", 360, "https://takuma-life.jp/wp-content/uploads/2018/05/IMG_1506-1.jpg"},
@@ -140,8 +145,8 @@ func ReplyConfirmationText(bot *linebot.Client) *linebot.TextMessage {
 	return linebot.NewTextMessage(orderDetail)
 }
 
-// ReplyConfirmationButton は 注文確認テキスト用ボタンを送信するメソッドです。
-func ReplyConfirmationButton(bot *linebot.Client) *linebot.TemplateMessage {
+// makeConfirmationButton は 注文確認テキスト用ボタンを返すメソッドです。
+func makeConfirmationButtonMessage() *linebot.TemplateMessage {
 
 	title := "ご注文は、こちらでお間違いありませんか？"
 	confirmationTemplate := linebot.NewConfirmTemplate(
@@ -153,8 +158,14 @@ func ReplyConfirmationButton(bot *linebot.Client) *linebot.TemplateMessage {
 	return linebot.NewTemplateMessage("ご注文確認", confirmationTemplate)
 }
 
-// ReplyThankYou は お礼メッセージを送信するメソッドです。
-func ReplyThankYou(bot *linebot.Client) *linebot.TextMessage {
+// makeThankYou は お礼メッセージを返するメソッドです。
+func makeThankYouMessage() *linebot.TextMessage {
 	message := "ご注文ありがとうございました。\n\n当日は現金をご用意の上\n所定の場所にお集まりください。\n\nまたのご利用お待ちしております。"
+	return linebot.NewTextMessage(message)
+}
+
+// makeSorryMessage は 謝りのメッセージを返すメソッドです。
+func makeSorryMessage() *linebot.TextMessage {
+	message := "申し訳ありません。\n最初から注文をやり直してください。"
 	return linebot.NewTextMessage(message)
 }
