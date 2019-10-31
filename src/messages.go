@@ -32,9 +32,10 @@ type oreder struct {
 }
 
 type orderTime struct {
-	begin    detailTime
-	end      detailTime
-	interval int // minute
+	begin     detailTime
+	end       detailTime
+	interval  int // minute
+	lastorder string
 }
 
 type detailTime struct {
@@ -90,8 +91,7 @@ func makeReservationDateMessage() *linebot.TemplateMessage {
 }
 
 // makeReservationTimeMessage は 注文時間指定用のメッセージを返すメソッドです。
-func makeReservationTimeMessage(timeTable []string) *linebot.TemplateMessage {
-	lastoreder := "12:30"
+func makeReservationTimeMessage(timeTable []string, lastoreder string) *linebot.TemplateMessage {
 	title := "時間指定"
 	phrase := "ご注文時間をお選びください。\nラストオーダー: " + lastoreder
 

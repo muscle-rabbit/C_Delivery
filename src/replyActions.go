@@ -64,8 +64,8 @@ func replyReservationDate(event *linebot.Event, bot *linebot.Client, client clie
 	return nil
 }
 func replyReservationTime(event *linebot.Event, bot *linebot.Client, client client) error {
-	ot := orderTime{detailTime{12, 00}, detailTime{15, 00}, 30}
-	if _, err := bot.ReplyMessage(event.ReplyToken, makeReservationTimeMessage(ot.makeTimeTable())).Do(); err != nil {
+	ot := orderTime{detailTime{12, 00}, detailTime{15, 00}, 30, "12:30"}
+	if _, err := bot.ReplyMessage(event.ReplyToken, makeReservationTimeMessage(ot.makeTimeTable(), ot.lastorder)).Do(); err != nil {
 		return err
 	}
 
