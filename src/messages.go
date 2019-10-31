@@ -8,26 +8,81 @@ import (
 	"github.com/line/line-bot-sdk-go/linebot"
 )
 
-type Item struct {
+type item struct {
 	Name     string
 	Price    int
 	ImageURL string
 }
 
+var items = []item{
+	{"鳥唐揚弁当", 360, "https://takuma-life.jp/wp-content/uploads/2018/05/IMG_1506-1.jpg"},
+	{"のり弁当", 300, "https://cdn-ak.f.st-hatena.com/images/fotolife/p/pegaman/20190119/20190119204845.jpg"},
+	{"シャケ弁当", 400, "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRMaV54QCJVdR1ZzHIcw2EMvehZEf_5KiizJhY7B_BvqDlGSklI&s"},
+	{"烏龍茶", 150, "https://i.ibb.co/QNzQBRn/Screen-Shot-2019-10-28-at-12-43-51.png"},
+	{"コカコーラ", 150, "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcScSLdxny37CL0tK4ADpnEVPjwX5jVWuHpxVmfcCt1DSreBG7iF1A&s"},
+}
+
+var wdays = [...]string{"日", "月", "火", "水", "木", "金", "土"}
+
+type oreder struct {
+	date     string
+	time     string
+	location string
+	items    []item
+}
+
+type orderTime struct {
+	begin    detailTime
+	end      detailTime
+	interval int // minute
+}
+
+type detailTime struct {
+	hour   int
+	minute int
+}
+
+func (ot orderTime) makeTimeTable() []string {
+	today := time.Now()
+	jst, _ := time.LoadLocation("Asia/Tokyo")
+
+	begin := time.Date(today.Year(), today.Month(), today.Day(), ot.begin.hour, ot.begin.minute, 0, 0, jst)
+	end := time.Date(today.Year(), today.Month(), today.Day(), ot.end.hour, ot.end.minute, 0, 0, jst)
+
+	diff := end.Sub(begin)
+	interval := time.Duration(ot.interval) * time.Minute
+
+	n := int(diff / interval)
+	tt := make([]string, n+1)
+	layout := "3:04AM"
+
+	for i := 0; i < n+1; i++ {
+		if i == 0 {
+			tt[0] = begin.Format(layout) + "~" + begin.Add(interval).Format(layout)
+			fmt.Println(begin.Format(layout))
+			continue
+		}
+		tt[i] = begin.Add(interval*time.Duration(i-1)).Format(layout) + "~" + begin.Add(interval*time.Duration(i)).Format(layout)
+	}
+
+	return tt
+}
+
 // makeReservationDateMessage は 注文日程指定用のメッセージを返すメソッドです。
 func makeReservationDateMessage() *linebot.TemplateMessage {
 	// 現状対応できるのは注文日を含めた二日間のみ。従業員が増えたら随時更新していく。 (2019/10/28)
-	wdays := [...]string{"日", "月", "火", "水", "木", "金", "土"}
 	title := "日程指定"
 	phrase := "ご注文日をお選びください。"
-	now := time.Now()
-	today := fmt.Sprintf("本日 %d/%d (%s)", now.Month(), now.Day(), wdays[now.Weekday()])
-	tomorrow := fmt.Sprintf("明日 %d/%d (%s)", now.Month(), now.Day()+1, wdays[now.Weekday()+1])
+
+	today := time.Now()
+
+	todayf := fmt.Sprintf("本日 %d/%d (%s)", today.Month(), today.Day(), wdays[today.Weekday()])
+	tomorrowf := fmt.Sprintf("明日 %d/%d (%s)", today.Month(), today.Day()+1, wdays[today.Weekday()+1])
 
 	template := linebot.NewButtonsTemplate(
 		"", title, phrase,
-		linebot.NewMessageAction(today, today),
-		linebot.NewMessageAction(tomorrow, tomorrow),
+		linebot.NewMessageAction(todayf, todayf),
+		linebot.NewMessageAction(tomorrowf, tomorrowf),
 	)
 
 	message := linebot.NewTemplateMessage("日程指定", template)
@@ -35,21 +90,31 @@ func makeReservationDateMessage() *linebot.TemplateMessage {
 }
 
 // makeReservationTimeMessage は 注文時間指定用のメッセージを返すメソッドです。
-func makeReservationTimeMessage() *linebot.TemplateMessage {
-	lastOrder := "12:30"
+func makeReservationTimeMessage(timeTable []string) *linebot.TemplateMessage {
+	lastoreder := "12:30"
 	title := "時間指定"
-	phrase := "ご注文時間をお選びください。\nラストオーダー: " + lastOrder
+	phrase := "ご注文時間をお選びください。\nラストオーダー: " + lastoreder
 
 	template := linebot.NewButtonsTemplate(
 		"", title, phrase,
-		linebot.NewMessageAction("12:00~12:30", "12:00~12:30"),
-		linebot.NewMessageAction("12:30~13:00", "12:30~13:00"),
-		linebot.NewMessageAction("13:30~14:00", "13:30~14:00"),
-		linebot.NewMessageAction("14:30~15:00", "14:30~15:00"),
+		// 4 つ以上の item は追加できない。
+		linebot.NewMessageAction(timeTable[0], timeTable[0]),
+		linebot.NewMessageAction(timeTable[1], timeTable[1]),
+		linebot.NewMessageAction(timeTable[2], timeTable[2]),
+		linebot.NewMessageAction(timeTable[3], timeTable[3]),
 	)
 
 	message := linebot.NewTemplateMessage("日程指定", template)
 	return message
+}
+
+// linebot.NewMessageAction("", title, phrase, ...actions) みたいに使いけどできない。
+func makeTimeTableMessageAction(timeTable []string) []*linebot.MessageAction {
+	actions := make([]*linebot.MessageAction, len(timeTable))
+	for i, time := range timeTable {
+		actions[i] = linebot.NewMessageAction(time, time)
+	}
+	return actions
 }
 
 // makeMenuText は 商品指定用のテキストメッセージを返すメソッドです。
@@ -59,7 +124,7 @@ func makeMenuTextMessage() *linebot.TextMessage {
 
 // makeMenu は 商品指定用の写真付きカルーセルを返すメソッドです。
 func makeMenuMessage() *linebot.TemplateMessage {
-	items := []Item{
+	items := []item{
 		{"鳥唐揚弁当", 360, "https://takuma-life.jp/wp-content/uploads/2018/05/IMG_1506-1.jpg"},
 		{"のり弁当", 300, "https://cdn-ak.f.st-hatena.com/images/fotolife/p/pegaman/20190119/20190119204845.jpg"},
 		{"シャケ弁当", 400, "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRMaV54QCJVdR1ZzHIcw2EMvehZEf_5KiizJhY7B_BvqDlGSklI&s"},
@@ -110,17 +175,10 @@ func makeLocationMessage() *linebot.TemplateMessage {
 	return linebot.NewTemplateMessage(title, template)
 }
 
-type Order struct {
-	date     string
-	time     string
-	location string
-	items    []Item
-}
-
 // makeConfirmationText は 注文確認テキスト用メッセージを返すメソッドです。
 func makeConfirmationTextMessage() *linebot.TextMessage {
 	// TODO: あとで消して、注文データはデータベースに保存するようにする。
-	order := Order{"11/1", "12:00~12:30", "8号館中央広場", []Item{
+	order := oreder{"11/1", "12:00~12:30", "8号館中央広場", []item{
 		{"鳥唐揚弁当", 360, "https://takuma-life.jp/wp-content/uploads/2018/05/IMG_1506-1.jpg"},
 		{"のり弁当", 300, "https://cdn-ak.f.st-hatena.com/images/fotolife/p/pegaman/20190119/20190119204845.jpg"},
 		{"シャケ弁当", 400, "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRMaV54QCJVdR1ZzHIcw2EMvehZEf_5KiizJhY7B_BvqDlGSklI&s"},

@@ -64,7 +64,8 @@ func replyReservationDate(event *linebot.Event, bot *linebot.Client, client clie
 	return nil
 }
 func replyReservationTime(event *linebot.Event, bot *linebot.Client, client client) error {
-	if _, err := bot.ReplyMessage(event.ReplyToken, makeReservationTimeMessage()).Do(); err != nil {
+	ot := orderTime{detailTime{12, 00}, detailTime{15, 00}, 30}
+	if _, err := bot.ReplyMessage(event.ReplyToken, makeReservationTimeMessage(ot.makeTimeTable())).Do(); err != nil {
 		return err
 	}
 
@@ -109,7 +110,8 @@ func replyThankYou(event *linebot.Event, bot *linebot.Client, client client) err
 		return err
 	}
 
-	client.session.Values["prev_step"] = end
+	// client.session.Values["prev_step"] = end
+	client.session.Values["prev_step"] = begin
 	if err := client.session.Save(client.request, client.writer); err != nil {
 		return err
 	}
