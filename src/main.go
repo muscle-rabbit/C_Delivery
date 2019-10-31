@@ -51,7 +51,7 @@ func callbackHandler(w http.ResponseWriter, r *http.Request) {
 			switch message := event.Message.(type) {
 			case *linebot.TextMessage:
 				quota, err := bot.GetMessageQuota().Do()
-				if err := replyReservationDate(event, bot); err != nil {
+				if err := reply(event, bot); err != nil {
 					log.Fatal(err)
 				}
 				// if _, err = bot.ReplyMessage(event.ReplyToken, messages.ReplyReservationTime(bot)).Do(); err != nil {

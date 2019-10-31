@@ -117,7 +117,7 @@ type Order struct {
 	items    []Item
 }
 
-// makeConfirmationText は 注文確認テキスト用メッセージを送信するメソッドです。
+// makeConfirmationText は 注文確認テキスト用メッセージを返すメソッドです。
 func makeConfirmationTextMessage() *linebot.TextMessage {
 	// TODO: あとで消して、注文データはデータベースに保存するようにする。
 	order := Order{"11/1", "12:00~12:30", "8号館中央広場", []Item{
@@ -145,7 +145,7 @@ func makeConfirmationTextMessage() *linebot.TextMessage {
 	return linebot.NewTextMessage(orderDetail)
 }
 
-// makeConfirmationButton は 注文確認テキスト用ボタンを送信するメソッドです。
+// makeConfirmationButton は 注文確認テキスト用ボタンを返すメソッドです。
 func makeConfirmationButtonMessage() *linebot.TemplateMessage {
 
 	title := "ご注文は、こちらでお間違いありませんか？"
@@ -158,8 +158,14 @@ func makeConfirmationButtonMessage() *linebot.TemplateMessage {
 	return linebot.NewTemplateMessage("ご注文確認", confirmationTemplate)
 }
 
-// makeThankYou は お礼メッセージを送信するメソッドです。
+// makeThankYou は お礼メッセージを返するメソッドです。
 func makeThankYouMessage() *linebot.TextMessage {
 	message := "ご注文ありがとうございました。\n\n当日は現金をご用意の上\n所定の場所にお集まりください。\n\nまたのご利用お待ちしております。"
+	return linebot.NewTextMessage(message)
+}
+
+// makeSorryMessage は 謝りのメッセージを返すメソッドです。
+func makeSorryMessage() *linebot.TextMessage {
+	message := "申し訳ありません。\n最初から注文をやり直してください。"
 	return linebot.NewTextMessage(message)
 }
