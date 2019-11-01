@@ -15,7 +15,6 @@ var c client
 var sessionStore sessions.Store
 
 func main() {
-
 	err := godotenv.Load()
 	if err != nil {
 		log.Fatal("Error loading .env file")
@@ -52,12 +51,11 @@ func callbackHandler(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				log.Fatalf("couldn't create session: %v", err)
 			}
-			switch message := event.Message.(type) {
+			switch event.Message.(type) {
 			case *linebot.TextMessage:
 				if err := c.reply(event); err != nil {
 					log.Fatal(err)
 				}
-				fmt.Printf("Message from user is: %s", message.Text)
 			}
 		}
 	}
