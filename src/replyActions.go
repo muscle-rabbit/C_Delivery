@@ -23,7 +23,7 @@ func (client client) reply(event *linebot.Event) *appError {
 	switch prevStep {
 	case nil, begin:
 		if err := replyReservationDate(event, client.bot, client); err != nil {
-			return appErrorf(err, "couldn't reply ReservationDate")
+			return appErrorf(err, "couldn't reply ReservationDate: %v", err)
 		}
 	case reservationData:
 		if err := replyReservationTime(event, client.bot, client); err != nil {

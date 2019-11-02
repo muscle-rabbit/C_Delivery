@@ -5,7 +5,7 @@ design/*
 lp/assets/
 
 # client
-*/.env
+*/**/.env
 
 # server
-firebase_credential/
+src/firestore_credential
