@@ -6,13 +6,11 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/gorilla/sessions"
 	"github.com/joho/godotenv"
 	"github.com/line/line-bot-sdk-go/linebot"
 )
 
 var c client
-var sessionStore sessions.Store
 
 func main() {
 	err := godotenv.Load()
@@ -27,8 +25,6 @@ func main() {
 	}
 
 	// cookieStore は client のセッション ID をまとめて管理する
-	cookieStore := sessions.NewCookieStore([]byte(os.Getenv("COOKIE_SECRET")))
-	sessionStore = cookieStore
 
 	c.bot, err = linebot.New(os.Getenv("CHANNEL_SECRET"), os.Getenv("CHANNEL_TOKEN"))
 	http.HandleFunc("/callback", app.callbackHandler)
@@ -53,7 +49,6 @@ func (app *app) callbackHandler(w http.ResponseWriter, r *http.Request) {
 		if event.Type == linebot.EventTypeMessage {
 			c.request = r
 			c.writer = w
-			c.session, err = sessionStore.Get(r, event.Source.UserID)
 			p, _ := c.bot.GetProfile(event.Source.UserID).Do()
 			if err = app.addUser(p); err != nil {
 				log.Fatal(err)

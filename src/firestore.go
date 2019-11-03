@@ -20,10 +20,6 @@ type User struct {
 	DisplayName string `firestore:"display_name,omitempty"`
 }
 
-type app struct {
-	client *firebase.App
-}
-
 func newApp() (*app, error) {
 	err := godotenv.Load()
 	if err != nil {
@@ -40,7 +36,8 @@ func newApp() (*app, error) {
 	}
 
 	return &app{
-		client: client,
+		client:       client,
+		sessionStore: sessionStore{},
 	}, nil
 }
 
