@@ -41,6 +41,8 @@ github.com/json-iterator/go v1.1.6/go.mod h1:+SdeFBvtyEkXs7REEP0seUULqWtbJapLOCV
 github.com/jstemmer/go-junit-report v0.0.0-20190106144839-af01ea7f8024/go.mod h1:6v2b51hI/fHJwM22ozAgKL4VKDeJcHhJFhtBdhmNjmU=
 github.com/line/line-bot-sdk-go v6.4.0+incompatible h1:j+yTHWjSo7ew9fVDjDsoP0gnr4iEAoaEFzlQhdQoxoQ=
 github.com/line/line-bot-sdk-go v6.4.0+incompatible/go.mod h1:0RjLjJEAU/3GIcHkC3av6O4jInAbt25nnZVmOFUgDBg=
+github.com/matryer/goblueprints v2.0.0+incompatible h1:HPeAn2kjzE3vJNCKTJkXnIieUhEC5lYkmceoppfIm1M=
+github.com/matryer/goblueprints v2.0.0+incompatible/go.mod h1:rfbEc1p/bzwUVXTp4pg873oUc/nOLiTTDZjwGhTAM10=
 github.com/mattn/go-isatty v0.0.7 h1:UvyT9uN+3r7yLEYSlJsbQGdsaB/a0DlgWP3pql6iwOc=
 github.com/mattn/go-isatty v0.0.7/go.mod h1:Iq45c/XA43vh69/j3iqttzPXn0bhXyGjM0Hdxcsrc5s=
 github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd h1:TRLaZ9cD/w8PVh93nsPXa1VrQ6jlwL5oN8l14QlcNfg=

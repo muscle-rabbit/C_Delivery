@@ -18,7 +18,7 @@ const (
 	end
 )
 
-func (client client) reply(event *linebot.Event) *appError {
+func (client *app) reply(event *linebot.Event) *appError {
 	prevStep := client.session.Values["prev_step"]
 	switch prevStep {
 	case nil, begin:

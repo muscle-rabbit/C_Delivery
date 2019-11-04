@@ -10,7 +10,7 @@ import (
 	"github.com/line/line-bot-sdk-go/linebot"
 )
 
-var c client
+var c bot
 
 func main() {
 	err := godotenv.Load()
@@ -26,7 +26,7 @@ func main() {
 
 	// cookieStore は client のセッション ID をまとめて管理する
 
-	c.bot, err = linebot.New(os.Getenv("CHANNEL_SECRET"), os.Getenv("CHANNEL_TOKEN"))
+	app.bot, err = linebot.New(os.Getenv("CHANNEL_SECRET"), os.Getenv("CHANNEL_TOKEN"))
 	http.HandleFunc("/callback", app.callbackHandler)
 	port := os.Getenv("PORT")
 	addr := fmt.Sprintf(":%s", port)
@@ -34,7 +34,7 @@ func main() {
 }
 
 func (app *app) callbackHandler(w http.ResponseWriter, r *http.Request) {
-	events, err := c.bot.ParseRequest(r)
+	events, err := app.bot.ParseRequest(r)
 
 	if err != nil {
 		if err == linebot.ErrInvalidSignature {
@@ -49,7 +49,7 @@ func (app *app) callbackHandler(w http.ResponseWriter, r *http.Request) {
 		if event.Type == linebot.EventTypeMessage {
 			c.request = r
 			c.writer = w
-			p, _ := c.bot.GetProfile(event.Source.UserID).Do()
+			p, _ := app.bot.GetProfile(event.Source.UserID).Do()
 			if err = app.addUser(p); err != nil {
 				log.Fatal(err)
 			}
@@ -59,7 +59,7 @@ func (app *app) callbackHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			switch event.Message.(type) {
 			case *linebot.TextMessage:
-				if err := c.reply(event); err != nil {
+				if err := app.reply(event); err != nil {
 					log.Fatal(err)
 				}
 			}
