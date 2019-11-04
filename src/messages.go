@@ -1,8 +1,6 @@
 package main
 
 import (
-	"bytes"
-	"encoding/gob"
 	"fmt"
 	"strconv"
 	"time"
@@ -11,17 +9,9 @@ import (
 )
 
 type item struct {
-	Name     string
-	Price    int
-	ImageURL string
-}
-
-var menuList = Menu{
-	{"鳥唐揚弁当", 360, "https://takuma-life.jp/wp-content/uploads/2018/05/IMG_1506-1.jpg"},
-	{"のり弁当", 300, "https://cdn-ak.f.st-hatena.com/images/fotolife/p/pegaman/20190119/20190119204845.jpg"},
-	{"シャケ弁当", 400, "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRMaV54QCJVdR1ZzHIcw2EMvehZEf_5KiizJhY7B_BvqDlGSklI&s"},
-	{"烏龍茶", 150, "https://i.ibb.co/QNzQBRn/Screen-Shot-2019-10-28-at-12-43-51.png"},
-	{"コカコーラ", 150, "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcScSLdxny37CL0tK4ADpnEVPjwX5jVWuHpxVmfcCt1DSreBG7iF1A&s"},
+	Name     string `firestore:"name,omitempty"`
+	Price    int    `firestore:"price,omitempty"`
+	ImageURL string `firestore:"picture_url,omitempty"`
 }
 
 type Menu []item
@@ -44,27 +34,6 @@ type Order struct {
 	Time     string `json:"time"`
 	Location string `json:"location"`
 	MenuList Menu   `json:"menuList"`
-}
-
-func encodeOrder(order Order) []byte {
-	buf := bytes.NewBuffer(nil)
-	_ = gob.NewEncoder(buf).Encode(&order)
-	return buf.Bytes()
-}
-
-func decodeOrder(data []byte) *Order {
-	fmt.Println("data in decode", data)
-	var o Order
-	buf := bytes.NewBuffer(data)
-	_ = gob.NewDecoder(buf).Decode(&o)
-	return &o
-
-	// return data.(*Order)
-
-	// var buf bytes.Buffer
-	// dec := gob.NewDecoder(&buf)
-	// dec.Decode(&data)
-	// return &Order{}
 }
 
 type orderTime struct {
@@ -99,7 +68,6 @@ func (ot orderTime) makeTimeTable() []string {
 	for i := 0; i < n+1; i++ {
 		if i == 0 {
 			tt[0] = begin.Format(layout) + "~" + begin.Add(interval).Format(layout)
-			fmt.Println(begin.Format(layout))
 			continue
 		}
 		tt[i] = begin.Add(interval*time.Duration(i-1)).Format(layout) + "~" + begin.Add(interval*time.Duration(i)).Format(layout)
@@ -162,14 +130,14 @@ func makeMenuTextMessage() *linebot.TextMessage {
 }
 
 // makeMenu は 商品指定用の写真付きカルーセルを返すメソッドです。
-func makeMenuMessage() *linebot.TemplateMessage {
+func makeMenuMessage(menu *Menu) *linebot.TemplateMessage {
 	marginLeftForName := "                "
 	marginLeftForPrice := "                       "
 	var columns []*linebot.CarouselColumn
 	columns = append(columns, linebot.NewCarouselColumn("https://mitkp.com/wp-content/uploads/2017/04/pop_kettei.png", "注文が決まりましたら押してください。", "注文決定",
 		linebot.NewMessageAction("これにする", "注文決定")))
 
-	for _, item := range menuList {
+	for _, item := range *menu {
 		columns = append(columns, linebot.NewCarouselColumn(
 			item.ImageURL, fmt.Sprintf("%s%s", marginLeftForName, item.Name), fmt.Sprintf("%s¥%s", marginLeftForPrice, strconv.Itoa(item.Price)),
 			linebot.NewMessageAction("これにする", item.Name),

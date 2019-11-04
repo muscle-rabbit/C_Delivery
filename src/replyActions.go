@@ -98,7 +98,7 @@ func (app *app) replyMenu(event *linebot.Event, userID string) error {
 	case *linebot.TextMessage:
 		if isTimeMessage(message.Text) {
 			session.order.Time = message.Text
-			if _, err := app.bot.ReplyMessage(event.ReplyToken, makeMenuTextMessage(), makeMenuMessage()).Do(); err != nil {
+			if _, err := app.bot.ReplyMessage(event.ReplyToken, makeMenuTextMessage(), makeMenuMessage(app.menu)).Do(); err != nil {
 				return err
 			}
 		} else if message.Text == "注文決定" {
@@ -107,7 +107,7 @@ func (app *app) replyMenu(event *linebot.Event, userID string) error {
 				return err
 			}
 		} else {
-			session.order.MenuList = append(session.order.MenuList, menuList.searchItemByName(message.Text))
+			session.order.MenuList = append(session.order.MenuList, app.menu.searchItemByName(message.Text))
 		}
 	}
 	return nil

@@ -11,6 +11,7 @@ type app struct {
 	bot          *linebot.Client
 	client       *firebase.App
 	sessionStore *sessionStore
+	menu         *Menu
 }
 
 type sessionStore struct {

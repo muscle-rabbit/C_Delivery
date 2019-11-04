@@ -17,9 +17,9 @@ import (
 
 // User represents a profile
 type User struct {
-	UserID      string `firestore:"user_id,omitempty"`
-	DisplayName string `firestore:"display_name,omitempty"`
-	CreatedAt   string `firestore:"created_at,omitempty"`
+	UserID      string    `firestore:"user_id,omitempty"`
+	DisplayName string    `firestore:"display_name,omitempty"`
+	CreatedAt   time.Time `firestore:"created_at,omitempty"`
 }
 
 func newApp() (*app, error) {
@@ -37,13 +37,19 @@ func newApp() (*app, error) {
 		return nil, fmt.Errorf("error initializing app: %v", err)
 	}
 
-	return &app{
-		client: client,
-		sessionStore: &sessionStore{
-			lifespan: time.Minute * 10,
-			sessions: make(sessions),
-		},
-	}, nil
+	app := &app{
+		client:       client,
+		sessionStore: &sessionStore{lifespan: time.Minute * 10, sessions: make(sessions)}}
+
+	// 商品情報の取得。
+	menu, err := app.getMenu()
+	if err != nil {
+		return nil, fmt.Errorf("error initializing app: %v", err)
+	}
+	app.menu = &menu
+
+	return app, nil
+
 }
 
 func (app *app) addUser(profile *linebot.UserProfileResponse) (string, error) {
@@ -58,6 +64,13 @@ func (app *app) addUser(profile *linebot.UserProfileResponse) (string, error) {
 	for {
 		doc, err := iter.Next()
 		if err == iterator.Done {
+			if doc == nil {
+				ref, _, err := client.Collection("users").Add(ctx, User{UserID: profile.UserID, DisplayName: profile.DisplayName, CreatedAt: time.Now()})
+				if err != nil {
+					return "", fmt.Errorf("couldn't find user document ref: %v", err)
+				}
+				return ref.ID, nil
+			}
 			break
 		}
 		if err != nil {
@@ -112,4 +125,31 @@ func (app *app) editOrder() error {
 func (app *app) deleteOrder() error {
 	var err error
 	return err
+}
+
+func (app *app) getMenu() (Menu, error) {
+	var menu Menu
+	ctx := context.Background()
+	client, err := app.client.Firestore(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("couldn't create client in getMenu: %v", err)
+	}
+
+	iter := client.Collection("products").Documents(ctx)
+	for {
+		doc, err := iter.Next()
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		var item item
+		if err := doc.DataTo(&item); err != nil {
+			return nil, err
+		}
+		menu = append(menu, item)
+	}
+
+	return menu, nil
 }
