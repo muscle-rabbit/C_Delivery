@@ -27,7 +27,6 @@ func (m Menu) searchItemByName(key string) item {
 }
 
 var wdays = [...]string{"日", "月", "火", "水", "木", "金", "土"}
-var locations = []string{"8号間 2F 中央広場", "6号館 1F"}
 
 type Order struct {
 	Date     string `json:"date"`
@@ -166,7 +165,7 @@ func makeHalfConfirmation(order Order) *linebot.TextMessage {
 }
 
 // makeLocation は 発送先用のメッセージを返すメソッドです。
-func makeLocationMessage() *linebot.TemplateMessage {
+func makeLocationMessage(locations []Location) *linebot.TemplateMessage {
 	title := "発送先指定"
 	phrase := "発送先を選択下さい。"
 
@@ -187,8 +186,8 @@ func makeLocationMessage() *linebot.TemplateMessage {
 
 	template := linebot.NewButtonsTemplate(
 		"", title, phrase,
-		linebot.NewMessageAction(locations[0], locations[0]),
-		linebot.NewMessageAction(locations[1], locations[1]),
+		linebot.NewMessageAction(locations[0].Name, locations[0].Name),
+		linebot.NewMessageAction(locations[1].Name, locations[1].Name),
 	)
 	return linebot.NewTemplateMessage(title, template)
 }

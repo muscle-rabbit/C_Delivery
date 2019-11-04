@@ -11,7 +11,7 @@ type app struct {
 	bot          *linebot.Client
 	client       *firebase.App
 	sessionStore *sessionStore
-	menu         *Menu
+	service      *service
 }
 
 type sessionStore struct {
@@ -26,6 +26,15 @@ type userSession struct {
 }
 
 type sessions map[string]*userSession
+
+type service struct {
+	menu      *Menu
+	locations []Location
+}
+
+type Location struct {
+	Name string `firestore:"name,omitempty"`
+}
 
 func (ss *sessionStore) createSession(userID string) *userSession {
 	ss.sessions[userID] = &userSession{prevStep: begin, createdAt: time.Now()}
