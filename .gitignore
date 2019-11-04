@@ -1,5 +1,6 @@
 .DS_Store
 design/*
+.vscode
 
 # lp
 lp/assets/
