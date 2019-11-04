@@ -20,18 +20,24 @@ func main() {
 		log.Fatal("Error loading .env file")
 	}
 
+	// firestore の初期化
+	app, err := newApp()
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	// cookieStore は client のセッション ID をまとめて管理する
 	cookieStore := sessions.NewCookieStore([]byte(os.Getenv("COOKIE_SECRET")))
 	sessionStore = cookieStore
 
 	c.bot, err = linebot.New(os.Getenv("CHANNEL_SECRET"), os.Getenv("CHANNEL_TOKEN"))
-	http.HandleFunc("/callback", callbackHandler)
+	http.HandleFunc("/callback", app.callbackHandler)
 	port := os.Getenv("PORT")
 	addr := fmt.Sprintf(":%s", port)
 	http.ListenAndServe(addr, nil)
 }
 
-func callbackHandler(w http.ResponseWriter, r *http.Request) {
+func (app *app) callbackHandler(w http.ResponseWriter, r *http.Request) {
 	events, err := c.bot.ParseRequest(r)
 
 	if err != nil {
@@ -48,6 +54,11 @@ func callbackHandler(w http.ResponseWriter, r *http.Request) {
 			c.request = r
 			c.writer = w
 			c.session, err = sessionStore.Get(r, event.Source.UserID)
+			p, _ := c.bot.GetProfile(event.Source.UserID).Do()
+			if err = app.addUser(p); err != nil {
+				log.Fatal(err)
+			}
+
 			if err != nil {
 				log.Fatalf("couldn't create session: %v", err)
 			}

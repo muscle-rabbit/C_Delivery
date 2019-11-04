@@ -117,7 +117,7 @@ func makeReservationDateMessage() *linebot.TemplateMessage {
 	today := time.Now()
 
 	todayf := fmt.Sprintf("本日 %d/%d (%s)", today.Month(), today.Day(), wdays[today.Weekday()])
-	tomorrowf := fmt.Sprintf("明日 %d/%d (%s)", today.Month(), today.Day()+1, wdays[today.Weekday()+1])
+	tomorrowf := fmt.Sprintf("明日 %d/%d (%s)", today.Month(), today.Day()+1, wdays[(6+today.Weekday())%6])
 
 	template := linebot.NewButtonsTemplate(
 		"", title, phrase,

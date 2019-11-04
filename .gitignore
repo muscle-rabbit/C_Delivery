@@ -1,4 +1,12 @@
 .DS_Store
 design/*
-assets/*
-src/.env
+.vscode
+
+# lp
+lp/assets/
+
+# client
+*/**/.env
+
+# server
+src/firestore_credential
