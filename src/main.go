@@ -3,16 +3,12 @@ package main
 import (
 	"fmt"
 	"log"
-	"net/http"
 	"os"
 
-	"github.com/gorilla/sessions"
+	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 	"github.com/line/line-bot-sdk-go/linebot"
 )
-
-var c client
-var sessionStore sessions.Store
 
 func main() {
 	err := godotenv.Load()
@@ -27,35 +23,34 @@ func main() {
 	}
 
 	// cookieStore は client のセッション ID をまとめて管理する
-	cookieStore := sessions.NewCookieStore([]byte(os.Getenv("COOKIE_SECRET")))
-	sessionStore = cookieStore
+	app.bot, err = linebot.New(os.Getenv("CHANNEL_SECRET"), os.Getenv("CHANNEL_TOKEN"))
 
-	c.bot, err = linebot.New(os.Getenv("CHANNEL_SECRET"), os.Getenv("CHANNEL_TOKEN"))
-	http.HandleFunc("/callback", app.callbackHandler)
+	// gin の生成。
+	r := gin.Default()
+	r.POST("/callback", app.callbackHandler)
+
 	port := os.Getenv("PORT")
 	addr := fmt.Sprintf(":%s", port)
-	http.ListenAndServe(addr, nil)
+	r.Run(addr)
 }
 
-func (app *app) callbackHandler(w http.ResponseWriter, r *http.Request) {
-	events, err := c.bot.ParseRequest(r)
+func (app *app) callbackHandler(g *gin.Context) {
+	events, err := app.bot.ParseRequest(g.Request)
 
 	if err != nil {
 		if err == linebot.ErrInvalidSignature {
-			w.WriteHeader(400)
+			g.Writer.WriteHeader(400)
 		} else {
-			w.WriteHeader(500)
+			g.Writer.WriteHeader(500)
 		}
 		return
 	}
 
 	for _, event := range events {
 		if event.Type == linebot.EventTypeMessage {
-			c.request = r
-			c.writer = w
-			c.session, err = sessionStore.Get(r, event.Source.UserID)
-			p, _ := c.bot.GetProfile(event.Source.UserID).Do()
-			if err = app.addUser(p); err != nil {
+			p, _ := app.bot.GetProfile(event.Source.UserID).Do()
+			docID, err := app.addUser(p)
+			if err != nil {
 				log.Fatal(err)
 			}
 
@@ -64,7 +59,7 @@ func (app *app) callbackHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			switch event.Message.(type) {
 			case *linebot.TextMessage:
-				if err := c.reply(event); err != nil {
+				if err := app.reply(event, docID); err != nil {
 					log.Fatal(err)
 				}
 			}

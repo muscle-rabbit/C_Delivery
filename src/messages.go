@@ -186,8 +186,6 @@ func makeHalfConfirmation(order Order) *linebot.TextMessage {
 	var menuText string
 	var priceText int
 
-	fmt.Println(order)
-
 	for i, item := range order.MenuList {
 		if i == 0 {
 			menuText = item.Name
@@ -265,7 +263,7 @@ func makeThankYouMessage() *linebot.TextMessage {
 }
 
 // makeSorryMessage は 謝りのメッセージを返すメソッドです。
-func makeSorryMessage() *linebot.TextMessage {
-	message := "申し訳ありません。\n最初から注文をやり直してください。"
+func makeSorryMessage(cause string) *linebot.TextMessage {
+	message := "申し訳ありません。\n" + cause + "\n最初から注文をやり直してください。"
 	return linebot.NewTextMessage(message)
 }
