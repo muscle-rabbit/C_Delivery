@@ -186,8 +186,6 @@ func makeHalfConfirmation(order Order) *linebot.TextMessage {
 	var menuText string
 	var priceText int
 
-	fmt.Println(order)
-
 	for i, item := range order.MenuList {
 		if i == 0 {
 			menuText = item.Name

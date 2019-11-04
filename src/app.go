@@ -15,7 +15,7 @@ type bot struct {
 }
 
 type app struct {
-	bot     *linebot.Client
+	bot          *linebot.Client
 	client       *firebase.App
 	sessionStore sessionStore
 }
@@ -46,13 +46,13 @@ func (app *app) checkSessionLifespan(userID string) (ok bool) {
 }
 
 func (app *app) SessionHandler(f gin.HandlerFunc) gin.HandlerFunc {
-	sessionStore := app.sessionStore
+	// sessionStore := app.sessionStore
 	return func(g *gin.Context) {
-		if !sessionStore.(g.Query(SESSION)) {
-			log.Errorf("Session not found: %s", g.Request.URL)
-			ms.errorResult(g, http.StatusInternalServerError, errorMessage(SESSION))
-			return
-		}
+		// if !sessionStore {
+		// 	log.Errorf("Session not found: %s", g.Request.URL)
+		// 	ms.errorResult(g, http.StatusInternalServerError, errorMessage(SESSION))
+		// 	return
+		// }
 		f(g)
 		return
 	}
