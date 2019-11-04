@@ -263,7 +263,7 @@ func makeThankYouMessage() *linebot.TextMessage {
 }
 
 // makeSorryMessage は 謝りのメッセージを返すメソッドです。
-func makeSorryMessage() *linebot.TextMessage {
-	message := "申し訳ありません。\n最初から注文をやり直してください。"
+func makeSorryMessage(cause string) *linebot.TextMessage {
+	message := "申し訳ありません。\n" + cause + "\n最初から注文をやり直してください。"
 	return linebot.NewTextMessage(message)
 }

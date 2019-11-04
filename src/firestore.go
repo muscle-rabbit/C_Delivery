@@ -2,8 +2,8 @@ package main
 
 import (
 	"fmt"
-	"net/http"
 	"os"
+	"time"
 
 	"golang.org/x/net/context"
 
@@ -36,16 +36,19 @@ func newApp() (*app, error) {
 	}
 
 	return &app{
-		client:       client,
-		sessionStore: sessionStore{},
+		client: client,
+		sessionStore: &sessionStore{
+			lifespan: time.Minute * 10,
+			sessions: make(sessions),
+		},
 	}, nil
 }
 
-func (app *app) addUser(profile *linebot.UserProfileResponse) error {
+func (app *app) addUser(profile *linebot.UserProfileResponse) (string, error) {
 	ctx := context.Background()
 	client, err := app.client.Firestore(ctx)
 	if err != nil {
-		return fmt.Errorf("couldn't create client in addUser: %v", err)
+		return "", fmt.Errorf("couldn't create client in addUser: %v", err)
 	}
 
 	// user がすでに登録されていたら nil を返す。
@@ -54,19 +57,21 @@ func (app *app) addUser(profile *linebot.UserProfileResponse) error {
 	if err != nil {
 		if doc == nil {
 			user := User{UserID: profile.UserID, DisplayName: profile.DisplayName}
-			if _, _, err := client.Collection("users").Add(ctx, user); err != nil {
-				return err
+			ref, _, err := client.Collection("users").Add(ctx, user)
+			if err != nil {
+				return "", fmt.Errorf("couldn't find user document ref: %v", err)
 			}
+			return ref.ID, nil
 		} else {
-			return err
+			return "", fmt.Errorf("couldn't iterate user document: %v", err)
 		}
 	}
 
-	return nil
+	return doc.Ref.ID, nil
 }
 
 // TODO: 注文を追加するメソッドの追加 Create
-func (app *app) addOrder(w http.ResponseWriter, r *http.Request, order Order) error {
+func (app *app) addOrder() error {
 	var err error
 
 	return err

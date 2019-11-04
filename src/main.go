@@ -10,8 +10,6 @@ import (
 	"github.com/line/line-bot-sdk-go/linebot"
 )
 
-var c bot
-
 func main() {
 	err := godotenv.Load()
 	if err != nil {
@@ -50,10 +48,9 @@ func (app *app) callbackHandler(g *gin.Context) {
 
 	for _, event := range events {
 		if event.Type == linebot.EventTypeMessage {
-			c.request = g.Request
-			c.writer = g.Writer
 			p, _ := app.bot.GetProfile(event.Source.UserID).Do()
-			if err = app.addUser(p); err != nil {
+			docID, err := app.addUser(p)
+			if err != nil {
 				log.Fatal(err)
 			}
 
@@ -62,7 +59,7 @@ func (app *app) callbackHandler(g *gin.Context) {
 			}
 			switch event.Message.(type) {
 			case *linebot.TextMessage:
-				if err := app.reply(event); err != nil {
+				if err := app.reply(event, docID); err != nil {
 					log.Fatal(err)
 				}
 			}

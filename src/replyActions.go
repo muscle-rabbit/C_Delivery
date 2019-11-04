@@ -1,8 +1,6 @@
 package main
 
 import (
-	"encoding/json"
-	"fmt"
 	"strings"
 
 	"github.com/line/line-bot-sdk-go/linebot"
@@ -18,125 +16,114 @@ const (
 	end
 )
 
-func (client *app) reply(event *linebot.Event) *appError {
-	prevStep := client.session.Values["prev_step"]
-	switch prevStep {
-	case nil, begin:
-		if err := replyReservationDate(event, client.bot, client); err != nil {
+func (app *app) reply(event *linebot.Event, userID string) *appError {
+	session := app.sessionStore.searchSession(userID)
+	if session == nil {
+		session = app.sessionStore.createSession(userID)
+	}
+
+	if !app.sessionStore.checkSessionLifespan(userID) {
+		err := app.replySorry(event, userID, "一回の注文にかけられる時間（10分）の上限に達したため")
+		if err != nil {
+			return appErrorf(err, "couldn't reply sorry")
+		}
+		return nil
+
+	}
+
+	switch session.prevStep {
+	case begin:
+		if err := app.replyReservationDate(event, userID); err != nil {
 			return appErrorf(err, "couldn't reply ReservationDate: %v", err)
 		}
 	case reservationData:
-		if err := replyReservationTime(event, client.bot, client); err != nil {
+		if err := app.replyReservationTime(event, userID); err != nil {
 			return appErrorf(err, "couldn't reply ReservationTime")
 		}
 	case reservationTime:
-		if err := replyMenu(event, client.bot, client); err != nil {
+		if err := app.replyMenu(event, userID); err != nil {
 			return appErrorf(err, "couldn't reply Menu")
 		}
 	case menu:
-		if err := replyHalfConfirmation(event, client.bot, client); err != nil {
+		if err := app.replyHalfConfirmation(event, userID); err != nil {
 			return appErrorf(err, "couldn't reply location")
 		}
 	case location:
-		if err := replyConfirmation(event, client.bot, client); err != nil {
+		if err := app.replyConfirmation(event, userID); err != nil {
 			return appErrorf(err, "couldn't reply confirmation")
 		}
 	case confirmation, end:
-		if err := replyFinalMessage(event, client.bot, client); err != nil {
+		if err := app.replyFinalMessage(event, userID); err != nil {
 			return appErrorf(err, "couldn't reply thankyou")
 		}
 	default:
-		if err := replySorry(event, client.bot, client); err != nil {
+		if err := app.replySorry(event, userID, "注文内容に誤りがあった"); err != nil {
 			return appErrorf(err, "couldn't reply sorry")
 		}
 	}
 	return nil
 }
 
-func replyReservationDate(event *linebot.Event, bot *linebot.Client, client client) error {
-	if _, err := bot.ReplyMessage(event.ReplyToken, makeReservationDateMessage()).Do(); err != nil {
-		return err
-	}
+func (app *app) replyReservationDate(event *linebot.Event, userID string) error {
+	session := app.sessionStore.searchSession(userID)
+	session.prevStep = reservationData
 
-	client.session.Values["prev_step"] = reservationData
-	if err := client.session.Save(client.request, client.writer); err != nil {
+	if _, err := app.bot.ReplyMessage(event.ReplyToken, makeReservationDateMessage()).Do(); err != nil {
 		return err
 	}
 	return nil
 }
-func replyReservationTime(event *linebot.Event, bot *linebot.Client, client client) error {
+func (app *app) replyReservationTime(event *linebot.Event, userID string) error {
+	session := app.sessionStore.searchSession(userID)
+
+	session.prevStep = reservationTime
 	ot := orderTime{detailTime{12, 00}, detailTime{15, 00}, 30, "12:30"}
-	if _, err := bot.ReplyMessage(event.ReplyToken, makeReservationTimeMessage(ot.makeTimeTable(), ot.lastorder)).Do(); err != nil {
-		return err
-	}
 
 	// TODO: 冗長なのでリファクタ必要。event.Message.Text みたいな使い方したい。
 	switch message := event.Message.(type) {
 	case *linebot.TextMessage:
-		order := Order{
-			Date: message.Text,
-		}
-		jorder, _ := json.Marshal(order)
-		client.session.Values["order"] = jorder
+		session.order = Order{Date: message.Text}
 	}
 
-	client.session.Values["prev_step"] = reservationTime
-	if err := client.session.Save(client.request, client.writer); err != nil {
+	if _, err := app.bot.ReplyMessage(event.ReplyToken, makeReservationTimeMessage(ot.makeTimeTable(), ot.lastorder)).Do(); err != nil {
 		return err
 	}
 	return nil
 }
-func replyMenu(event *linebot.Event, bot *linebot.Client, client client) error {
-
-	// session から ユーザーの選択中の情報を取得。
-	var userOrder Order
-	if b, ok := client.session.Values["order"].([]byte); ok {
-		json.Unmarshal(b, &userOrder)
-	} else {
-		return fmt.Errorf("couldn't do type assertion.")
-	}
+func (app *app) replyMenu(event *linebot.Event, userID string) error {
+	session := app.sessionStore.searchSession(userID)
 
 	// TODO: 冗長なのでリファクタ必要。event.Message.Text みたいな使い方したい。
 	switch message := event.Message.(type) {
 	case *linebot.TextMessage:
 		if isTimeMessage(message.Text) {
-			userOrder.Time = message.Text
-			jorder, _ := json.Marshal(userOrder)
-			client.session.Values["order"] = jorder
-			if _, err := bot.ReplyMessage(event.ReplyToken, makeMenuTextMessage(), makeMenuMessage()).Do(); err != nil {
+			session.order.Time = message.Text
+			if _, err := app.bot.ReplyMessage(event.ReplyToken, makeMenuTextMessage(), makeMenuMessage()).Do(); err != nil {
 				return err
 			}
 		} else if message.Text == "注文決定" {
-			client.session.Values["prev_step"] = menu
-			jorder, _ := json.Marshal(userOrder)
-			client.session.Values["order"] = jorder
-			if _, err := bot.ReplyMessage(event.ReplyToken, makeHalfConfirmation(userOrder), makeConfirmationButtonMessage()).Do(); err != nil {
+			session.prevStep = menu
+			if _, err := app.bot.ReplyMessage(event.ReplyToken, makeHalfConfirmation(session.order), makeConfirmationButtonMessage()).Do(); err != nil {
 				return err
 			}
 		} else {
-			userOrder.MenuList = append(userOrder.MenuList, menuList.searchItemByName(message.Text))
-			jorder, _ := json.Marshal(userOrder)
-			client.session.Values["order"] = jorder
+			session.order.MenuList = append(session.order.MenuList, menuList.searchItemByName(message.Text))
 		}
 	}
-
-	if err := client.session.Save(client.request, client.writer); err != nil {
-		return err
-	}
-
 	return nil
 }
 
-func replyHalfConfirmation(event *linebot.Event, bot *linebot.Client, client client) error {
+func (app *app) replyHalfConfirmation(event *linebot.Event, userID string) error {
 	// TODO: 冗長なのでリファクタ必要。event.Message.Text みたいな使い方したい。
+
 	switch message := event.Message.(type) {
 	case *linebot.TextMessage:
 		if message.Text == "はい" {
-			if err := replyLocation(event, bot, client); err != nil {
+			if err := app.replyLocation(event, userID); err != nil {
 				return err
 			}
 		} else {
-			if err := replySorry(event, bot, client); err != nil {
+			if err := app.replySorry(event, userID, "注文内容に誤りがあったため"); err != nil {
 				return err
 			}
 
@@ -146,59 +133,43 @@ func replyHalfConfirmation(event *linebot.Event, bot *linebot.Client, client cli
 
 }
 
-func replyLocation(event *linebot.Event, bot *linebot.Client, client client) error {
-	if _, err := bot.ReplyMessage(event.ReplyToken, makeLocationMessage()).Do(); err != nil {
-		return err
-	}
-	client.session.Values["prev_step"] = location
-	if err := client.session.Save(client.request, client.writer); err != nil {
+func (app *app) replyLocation(event *linebot.Event, userID string) error {
+	session := app.sessionStore.searchSession(userID)
+
+	session.prevStep = location
+
+	if _, err := app.bot.ReplyMessage(event.ReplyToken, makeLocationMessage()).Do(); err != nil {
 		return err
 	}
 	return nil
 }
-func replyConfirmation(event *linebot.Event, bot *linebot.Client, client client) error {
-
-	// session から ユーザーの選択中の情報を取得。
-	var userOrder Order
-	if b, ok := client.session.Values["order"].([]byte); ok {
-		json.Unmarshal(b, &userOrder)
-	} else {
-		return fmt.Errorf("couldn't do type assertion.")
-	}
+func (app *app) replyConfirmation(event *linebot.Event, userID string) error {
+	session := app.sessionStore.searchSession(userID)
+	session.prevStep = confirmation
 
 	// 一つ前のステップで取得した値をセットする。
 	// TODO: 冗長なのでリファクタ必要。event.Message.Text みたいな使い方したい。
 	switch message := event.Message.(type) {
 	case *linebot.TextMessage:
-		userOrder.Location = message.Text
-		jorder, err := json.Marshal(userOrder)
-		if err != nil {
-			return fmt.Errorf("couldn't make userOrder json: %v", jorder)
-		}
-		client.session.Values["order"] = jorder
+		session.order.Location = message.Text
 	}
 
-	if _, err := bot.ReplyMessage(event.ReplyToken, makeConfirmationTextMessage(userOrder), makeConfirmationButtonMessage()).Do(); err != nil {
-		return err
-	}
-	client.session.Values["prev_step"] = confirmation
-
-	if err := client.session.Save(client.request, client.writer); err != nil {
+	if _, err := app.bot.ReplyMessage(event.ReplyToken, makeConfirmationTextMessage(session.order), makeConfirmationButtonMessage()).Do(); err != nil {
 		return err
 	}
 	return nil
 }
 
-func replyFinalMessage(event *linebot.Event, bot *linebot.Client, client client) error {
+func (app *app) replyFinalMessage(event *linebot.Event, userID string) error {
 	// TODO: 冗長なのでリファクタ必要。event.Message.Text みたいな使い方したい。
 	switch message := event.Message.(type) {
 	case *linebot.TextMessage:
 		if message.Text == "はい" {
-			if err := replyThankYou(event, bot, client); err != nil {
+			if err := app.replyThankYou(event, userID); err != nil {
 				return err
 			}
 		} else {
-			if err := replySorry(event, bot, client); err != nil {
+			if err := app.replySorry(event, userID, "注文内容に誤りがあったため"); err != nil {
 				return err
 			}
 
@@ -207,36 +178,24 @@ func replyFinalMessage(event *linebot.Event, bot *linebot.Client, client client)
 	return nil
 }
 
-func replyThankYou(event *linebot.Event, bot *linebot.Client, client client) error {
-	if _, err := bot.ReplyMessage(event.ReplyToken, makeThankYouMessage()).Do(); err != nil {
+func (app *app) replyThankYou(event *linebot.Event, userID string) error {
+	session := app.sessionStore.searchSession(userID)
+
+	session.prevStep = begin
+	app.sessionStore.deleteUserSession(userID)
+
+	if _, err := app.bot.ReplyMessage(event.ReplyToken, makeThankYouMessage()).Do(); err != nil {
 		return err
 	}
 
-	// session から ユーザーの選択中の情報を取得。
-	var userOrder Order
-	if b, ok := client.session.Values["order"].([]byte); ok {
-		json.Unmarshal(b, &userOrder)
-	} else {
-		return fmt.Errorf("couldn't do type assertion.")
-	}
-
-	// client.session.Values["prev_step"] = end
-	client.session.Values["prev_step"] = begin
-	if err := client.session.Save(client.request, client.writer); err != nil {
-		return err
-	}
 	return nil
 }
-func replySorry(event *linebot.Event, bot *linebot.Client, client client) error {
-	// TODO: session を破棄
-	if _, err := bot.ReplyMessage(event.ReplyToken, makeSorryMessage(), makeReservationDateMessage()).Do(); err != nil {
+func (app *app) replySorry(event *linebot.Event, userID string, cause string) error {
+	if _, err := app.bot.ReplyMessage(event.ReplyToken, makeSorryMessage(cause), makeReservationDateMessage()).Do(); err != nil {
 		return err
 	}
 
-	client.session.Values["prev_step"] = begin
-	if err := client.session.Save(client.request, client.writer); err != nil {
-		return err
-	}
+	app.sessionStore.deleteUserSession(userID)
 	return nil
 }
 

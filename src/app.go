@@ -1,59 +1,52 @@
 package main
 
 import (
-	"net/http"
 	"time"
 
 	firebase "firebase.google.com/go"
-	"github.com/gin-gonic/gin"
 	"github.com/line/line-bot-sdk-go/linebot"
 )
-
-type bot struct {
-	request *http.Request
-	writer  http.ResponseWriter
-}
 
 type app struct {
 	bot          *linebot.Client
 	client       *firebase.App
-	sessionStore sessionStore
+	sessionStore *sessionStore
 }
 
 type sessionStore struct {
-	sessions map[string]userInfo
+	sessions sessions
 	lifespan time.Duration
 }
 
-type userInfo struct {
-	prevStep  string
+type userSession struct {
+	prevStep  int
 	createdAt time.Time
 	order     Order
 }
 
-func (app *app) createOrderSession() (userID string) {
-	app.sessionStore.sessions[userID] = userInfo{createdAt: time.Now()}
-	return
+type sessions map[string]*userSession
+
+func (ss *sessionStore) createSession(userID string) *userSession {
+	ss.sessions[userID] = &userSession{prevStep: begin, createdAt: time.Now()}
+	return ss.sessions[userID]
 }
 
-func (app *app) checkSessionLifespan(userID string) (ok bool) {
-	diff := time.Since(app.sessionStore.sessions[userID].createdAt)
-	if ok = diff <= app.sessionStore.lifespan; ok {
+func (ss *sessionStore) deleteUserSession(userID string) {
+	delete(ss.sessions, userID)
+}
+
+func (ss *sessionStore) checkSessionLifespan(userID string) (ok bool) {
+	session := ss.sessions[userID]
+	diff := time.Since(session.createdAt)
+	if ok = diff <= ss.lifespan; ok {
 		return true
 	}
-	delete(app.sessionStore.sessions, userID)
 	return false
 }
 
-func (app *app) SessionHandler(f gin.HandlerFunc) gin.HandlerFunc {
-	// sessionStore := app.sessionStore
-	return func(g *gin.Context) {
-		// if !sessionStore {
-		// 	log.Errorf("Session not found: %s", g.Request.URL)
-		// 	ms.errorResult(g, http.StatusInternalServerError, errorMessage(SESSION))
-		// 	return
-		// }
-		f(g)
-		return
+func (ss *sessionStore) searchSession(userID string) *userSession {
+	if ss.sessions[userID] != nil {
+		return ss.sessions[userID]
 	}
+	return nil
 }
