@@ -3,6 +3,10 @@ package main
 import (
 	"strings"
 
+	"strconv"
+
+	"fmt"
+
 	"github.com/line/line-bot-sdk-go/linebot"
 )
 
@@ -77,7 +81,7 @@ func (app *app) replyReservationTime(event *linebot.Event, userID string) error 
 	session := app.sessionStore.searchSession(userID)
 
 	session.prevStep = reservatteTime
-	ot := orderTime{detailTime{12, 00}, detailTime{15, 00}, 30, "12:30"}
+	bh := businessHours{detailTime{12, 00}, detailTime{15, 00}, 30, "12:30"}
 
 	// TODO: 冗長なのでリファクタ必要。event.Message.Text みたいな使い方したい。
 	switch message := event.Message.(type) {
@@ -85,7 +89,7 @@ func (app *app) replyReservationTime(event *linebot.Event, userID string) error 
 		session.order = Order{Date: message.Text}
 	}
 
-	if _, err := app.bot.ReplyMessage(event.ReplyToken, makeReservationTimeMessage(ot.makeTimeTable(), ot.lastorder)).Do(); err != nil {
+	if _, err := app.bot.ReplyMessage(event.ReplyToken, makeReservationTimeMessage(bh.makeTimeTable(), bh.lastorder)).Do(); err != nil {
 		return err
 	}
 	return nil
@@ -97,17 +101,25 @@ func (app *app) replyMenu(event *linebot.Event, userID string) error {
 	switch message := event.Message.(type) {
 	case *linebot.TextMessage:
 		if isTimeMessage(message.Text) {
+			// メニューカルセールを返す。
 			session.order.Time = message.Text
 			if _, err := app.bot.ReplyMessage(event.ReplyToken, makeMenuTextMessage(), makeMenuMessage(app.service.menu)).Do(); err != nil {
 				return err
 			}
 		} else if message.Text == "注文決定" {
+			// 次のステップに移る。
 			session.prevStep = setMenu
-			if _, err := app.bot.ReplyMessage(event.ReplyToken, makeHalfConfirmation(session.order), makeConfirmationButtonMessage()).Do(); err != nil {
+			price := app.service.menu.calcPrice(session.order.products)
+			if _, err := app.bot.ReplyMessage(event.ReplyToken, makeHalfConfirmation(session.order, strconv.Itoa(price)), makeConfirmationButtonMessage()).Do(); err != nil {
 				return err
 			}
 		} else {
-			session.order.MenuList = append(session.order.MenuList, app.service.menu.searchItemByName(message.Text))
+			// 注文メッセージを待ち受ける。 expeted: {商品名} × n
+			product, err := convertTextToProduct(message.Text)
+			if err != nil {
+				return err
+			}
+			session.order.products.push(product)
 		}
 	}
 	return nil
@@ -154,7 +166,8 @@ func (app *app) replyConfirmation(event *linebot.Event, userID string) error {
 		session.order.Location = message.Text
 	}
 
-	if _, err := app.bot.ReplyMessage(event.ReplyToken, makeConfirmationTextMessage(session.order), makeConfirmationButtonMessage()).Do(); err != nil {
+	price := app.service.menu.calcPrice(session.order.products)
+	if _, err := app.bot.ReplyMessage(event.ReplyToken, makeConfirmationTextMessage(session.order, strconv.Itoa(price)), makeConfirmationButtonMessage()).Do(); err != nil {
 		return err
 	}
 	return nil
@@ -202,4 +215,15 @@ func (app *app) replySorry(event *linebot.Event, userID string, cause string) er
 func isTimeMessage(text string) bool {
 	timeFormat := "~"
 	return strings.Contains(text, timeFormat)
+}
+
+func convertTextToProduct(text string) (products, error) {
+	var product products
+	i := strings.Index(text, "×")
+	d, err := strconv.Atoi(text[i+1:])
+	if err != nil {
+		return nil, fmt.Errorf("couldn't convert string to int: %v", err)
+	}
+	product[text[:i]] = d
+	return product, nil
 }

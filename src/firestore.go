@@ -48,16 +48,15 @@ func newApp() (*app, error) {
 	if err != nil {
 		return nil, fmt.Errorf("couldn't get Menu : %v", err)
 	}
-	app.service.menu = &menu
+	app.service.menu = menu
 
 	// 配達場所情報の取得。
-
 	locations, err := app.getLocations()
 	if err != nil {
 		return nil, fmt.Errorf("couldn't get Locations: %v", err)
 	}
-
 	app.service.locations = locations
+
 	return app, nil
 
 }
