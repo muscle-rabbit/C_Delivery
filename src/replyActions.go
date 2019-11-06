@@ -3,16 +3,20 @@ package main
 import (
 	"strings"
 
+	"strconv"
+
+	"fmt"
+
 	"github.com/line/line-bot-sdk-go/linebot"
 )
 
 const (
 	begin int = iota
-	reservationData
-	reservationTime
-	menu
-	location
-	confirmation
+	reservateData
+	reservatteTime
+	setMenu
+	setLocation
+	confirm
 	end
 )
 
@@ -36,23 +40,23 @@ func (app *app) reply(event *linebot.Event, userID string) *appError {
 		if err := app.replyReservationDate(event, userID); err != nil {
 			return appErrorf(err, "couldn't reply ReservationDate: %v", err)
 		}
-	case reservationData:
+	case reservateData:
 		if err := app.replyReservationTime(event, userID); err != nil {
 			return appErrorf(err, "couldn't reply ReservationTime")
 		}
-	case reservationTime:
+	case reservatteTime:
 		if err := app.replyMenu(event, userID); err != nil {
 			return appErrorf(err, "couldn't reply Menu")
 		}
-	case menu:
+	case setMenu:
 		if err := app.replyHalfConfirmation(event, userID); err != nil {
 			return appErrorf(err, "couldn't reply location")
 		}
-	case location:
+	case setLocation:
 		if err := app.replyConfirmation(event, userID); err != nil {
 			return appErrorf(err, "couldn't reply confirmation")
 		}
-	case confirmation, end:
+	case confirm, end:
 		if err := app.replyFinalMessage(event, userID); err != nil {
 			return appErrorf(err, "couldn't reply thankyou")
 		}
@@ -66,7 +70,7 @@ func (app *app) reply(event *linebot.Event, userID string) *appError {
 
 func (app *app) replyReservationDate(event *linebot.Event, userID string) error {
 	session := app.sessionStore.searchSession(userID)
-	session.prevStep = reservationData
+	session.prevStep = reservateData
 
 	if _, err := app.bot.ReplyMessage(event.ReplyToken, makeReservationDateMessage()).Do(); err != nil {
 		return err
@@ -76,8 +80,8 @@ func (app *app) replyReservationDate(event *linebot.Event, userID string) error 
 func (app *app) replyReservationTime(event *linebot.Event, userID string) error {
 	session := app.sessionStore.searchSession(userID)
 
-	session.prevStep = reservationTime
-	ot := orderTime{detailTime{12, 00}, detailTime{15, 00}, 30, "12:30"}
+	session.prevStep = reservatteTime
+	bh := businessHours{detailTime{12, 00}, detailTime{15, 00}, 30, "12:30"}
 
 	// TODO: 冗長なのでリファクタ必要。event.Message.Text みたいな使い方したい。
 	switch message := event.Message.(type) {
@@ -85,7 +89,7 @@ func (app *app) replyReservationTime(event *linebot.Event, userID string) error 
 		session.order = Order{Date: message.Text}
 	}
 
-	if _, err := app.bot.ReplyMessage(event.ReplyToken, makeReservationTimeMessage(ot.makeTimeTable(), ot.lastorder)).Do(); err != nil {
+	if _, err := app.bot.ReplyMessage(event.ReplyToken, makeReservationTimeMessage(bh.makeTimeTable(), bh.lastorder)).Do(); err != nil {
 		return err
 	}
 	return nil
@@ -97,17 +101,25 @@ func (app *app) replyMenu(event *linebot.Event, userID string) error {
 	switch message := event.Message.(type) {
 	case *linebot.TextMessage:
 		if isTimeMessage(message.Text) {
+			// メニューカルセールを返す。
 			session.order.Time = message.Text
-			if _, err := app.bot.ReplyMessage(event.ReplyToken, makeMenuTextMessage(), makeMenuMessage()).Do(); err != nil {
+			if _, err := app.bot.ReplyMessage(event.ReplyToken, makeMenuTextMessage(), makeMenuMessage(app.service.menu)).Do(); err != nil {
 				return err
 			}
 		} else if message.Text == "注文決定" {
-			session.prevStep = menu
-			if _, err := app.bot.ReplyMessage(event.ReplyToken, makeHalfConfirmation(session.order), makeConfirmationButtonMessage()).Do(); err != nil {
+			// 次のステップに移る。
+			session.prevStep = setMenu
+			price := app.service.menu.calcPrice(session.order.products)
+			if _, err := app.bot.ReplyMessage(event.ReplyToken, makeHalfConfirmation(session.order, strconv.Itoa(price)), makeConfirmationButtonMessage()).Do(); err != nil {
 				return err
 			}
 		} else {
-			session.order.MenuList = append(session.order.MenuList, menuList.searchItemByName(message.Text))
+			// 注文メッセージを待ち受ける。 expeted: {商品名} × n
+			product, err := convertTextToProduct(message.Text)
+			if err != nil {
+				return err
+			}
+			session.order.products.push(product)
 		}
 	}
 	return nil
@@ -136,16 +148,16 @@ func (app *app) replyHalfConfirmation(event *linebot.Event, userID string) error
 func (app *app) replyLocation(event *linebot.Event, userID string) error {
 	session := app.sessionStore.searchSession(userID)
 
-	session.prevStep = location
+	session.prevStep = setLocation
 
-	if _, err := app.bot.ReplyMessage(event.ReplyToken, makeLocationMessage()).Do(); err != nil {
+	if _, err := app.bot.ReplyMessage(event.ReplyToken, makeLocationMessage(app.service.locations)).Do(); err != nil {
 		return err
 	}
 	return nil
 }
 func (app *app) replyConfirmation(event *linebot.Event, userID string) error {
 	session := app.sessionStore.searchSession(userID)
-	session.prevStep = confirmation
+	session.prevStep = confirm
 
 	// 一つ前のステップで取得した値をセットする。
 	// TODO: 冗長なのでリファクタ必要。event.Message.Text みたいな使い方したい。
@@ -154,7 +166,8 @@ func (app *app) replyConfirmation(event *linebot.Event, userID string) error {
 		session.order.Location = message.Text
 	}
 
-	if _, err := app.bot.ReplyMessage(event.ReplyToken, makeConfirmationTextMessage(session.order), makeConfirmationButtonMessage()).Do(); err != nil {
+	price := app.service.menu.calcPrice(session.order.products)
+	if _, err := app.bot.ReplyMessage(event.ReplyToken, makeConfirmationTextMessage(session.order, strconv.Itoa(price)), makeConfirmationButtonMessage()).Do(); err != nil {
 		return err
 	}
 	return nil
@@ -202,4 +215,15 @@ func (app *app) replySorry(event *linebot.Event, userID string, cause string) er
 func isTimeMessage(text string) bool {
 	timeFormat := "~"
 	return strings.Contains(text, timeFormat)
+}
+
+func convertTextToProduct(text string) (products, error) {
+	var product products
+	i := strings.Index(text, "×")
+	d, err := strconv.Atoi(text[i+1:])
+	if err != nil {
+		return nil, fmt.Errorf("couldn't convert string to int: %v", err)
+	}
+	product[text[:i]] = d
+	return product, nil
 }

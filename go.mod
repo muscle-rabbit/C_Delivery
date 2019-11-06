@@ -6,6 +6,7 @@ require (
 	cloud.google.com/go v0.38.0
 	firebase.google.com/go v3.9.0+incompatible
 	github.com/gin-gonic/gin v1.4.0
+	github.com/golang/protobuf v1.3.1
 	github.com/gorilla/sessions v1.2.0
 	github.com/joho/godotenv v1.3.0
 	github.com/line/line-bot-sdk-go v6.4.0+incompatible

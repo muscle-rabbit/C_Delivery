@@ -1,8 +1,6 @@
 package main
 
 import (
-	"bytes"
-	"encoding/gob"
 	"fmt"
 	"strconv"
 	"time"
@@ -11,17 +9,9 @@ import (
 )
 
 type item struct {
-	Name     string
-	Price    int
-	ImageURL string
-}
-
-var menuList = Menu{
-	{"鳥唐揚弁当", 360, "https://takuma-life.jp/wp-content/uploads/2018/05/IMG_1506-1.jpg"},
-	{"のり弁当", 300, "https://cdn-ak.f.st-hatena.com/images/fotolife/p/pegaman/20190119/20190119204845.jpg"},
-	{"シャケ弁当", 400, "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRMaV54QCJVdR1ZzHIcw2EMvehZEf_5KiizJhY7B_BvqDlGSklI&s"},
-	{"烏龍茶", 150, "https://i.ibb.co/QNzQBRn/Screen-Shot-2019-10-28-at-12-43-51.png"},
-	{"コカコーラ", 150, "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcScSLdxny37CL0tK4ADpnEVPjwX5jVWuHpxVmfcCt1DSreBG7iF1A&s"},
+	Name       string `firestore:"name,omitempty"  json:"name"`
+	Price      int    `firestore:"price,omitempty"  json:"price"`
+	PictureURL string `firestore:"picture_url,omitempty"  json:"id" json:"picture_url"`
 }
 
 type Menu []item
@@ -37,60 +27,23 @@ func (m Menu) searchItemByName(key string) item {
 }
 
 var wdays = [...]string{"日", "月", "火", "水", "木", "金", "土"}
-var locations = []string{"8号間 2F 中央広場", "6号館 1F"}
 
 type Order struct {
 	Date     string `json:"date"`
 	Time     string `json:"time"`
 	Location string `json:"location"`
-	MenuList Menu   `json:"menuList"`
+	products products
 }
 
-func encodeOrder(order Order) []byte {
-	buf := bytes.NewBuffer(nil)
-	_ = gob.NewEncoder(buf).Encode(&order)
-	return buf.Bytes()
-}
-
-func decodeOrder(data []byte) *Order {
-	fmt.Println("data in decode", data)
-	var o Order
-	buf := bytes.NewBuffer(data)
-	_ = gob.NewDecoder(buf).Decode(&o)
-	return &o
-
-	// return data.(*Order)
-
-	// var buf bytes.Buffer
-	// dec := gob.NewDecoder(&buf)
-	// dec.Decode(&data)
-	// return &Order{}
-}
-
-type orderTime struct {
-	begin     detailTime
-	end       detailTime
-	interval  int // minute
-	lastorder string
-}
-
-type detailTime struct {
-	hour   int
-	minute int
-}
-
-// gorilla/sessions の Values() の返り値用に使う Map 構造体。・
-type M map[string]interface{}
-
-func (ot orderTime) makeTimeTable() []string {
+func (bh businessHours) makeTimeTable() []string {
 	today := time.Now()
 	jst, _ := time.LoadLocation("Asia/Tokyo")
 
-	begin := time.Date(today.Year(), today.Month(), today.Day(), ot.begin.hour, ot.begin.minute, 0, 0, jst)
-	end := time.Date(today.Year(), today.Month(), today.Day(), ot.end.hour, ot.end.minute, 0, 0, jst)
+	begin := time.Date(today.Year(), today.Month(), today.Day(), bh.begin.hour, bh.begin.minute, 0, 0, jst)
+	end := time.Date(today.Year(), today.Month(), today.Day(), bh.end.hour, bh.end.minute, 0, 0, jst)
 
 	diff := end.Sub(begin)
-	interval := time.Duration(ot.interval) * time.Minute
+	interval := time.Duration(bh.interval) * time.Minute
 
 	n := int(diff / interval)
 	tt := make([]string, n+1)
@@ -99,7 +52,6 @@ func (ot orderTime) makeTimeTable() []string {
 	for i := 0; i < n+1; i++ {
 		if i == 0 {
 			tt[0] = begin.Format(layout) + "~" + begin.Add(interval).Format(layout)
-			fmt.Println(begin.Format(layout))
 			continue
 		}
 		tt[i] = begin.Add(interval*time.Duration(i-1)).Format(layout) + "~" + begin.Add(interval*time.Duration(i)).Format(layout)
@@ -162,84 +114,54 @@ func makeMenuTextMessage() *linebot.TextMessage {
 }
 
 // makeMenu は 商品指定用の写真付きカルーセルを返すメソッドです。
-func makeMenuMessage() *linebot.TemplateMessage {
-	marginLeftForName := "                "
-	marginLeftForPrice := "                       "
-	var columns []*linebot.CarouselColumn
-	columns = append(columns, linebot.NewCarouselColumn("https://mitkp.com/wp-content/uploads/2017/04/pop_kettei.png", "注文が決まりましたら押してください。", "注文決定",
-		linebot.NewMessageAction("これにする", "注文決定")))
 
-	for _, item := range menuList {
-		columns = append(columns, linebot.NewCarouselColumn(
-			item.ImageURL, fmt.Sprintf("%s%s", marginLeftForName, item.Name), fmt.Sprintf("%s¥%s", marginLeftForPrice, strconv.Itoa(item.Price)),
-			linebot.NewMessageAction("これにする", item.Name),
-		))
-
+func makeMenuMessage(menu Menu) *linebot.FlexMessage {
+	var containers []*linebot.BubbleContainer
+	containers = append(containers, makeDecideButton())
+	for _, item := range menu {
+		containers = append(containers, makeMenuCard(item))
 	}
-	template := linebot.NewCarouselTemplate(
-		columns...,
-	)
-	return linebot.NewTemplateMessage("メニュー指定", template)
+	carousel := &linebot.CarouselContainer{
+		Type:     linebot.FlexContainerTypeCarousel,
+		Contents: containers,
+	}
+
+	message := linebot.NewFlexMessage("Menu List", carousel)
+	return message
 }
 
-func makeHalfConfirmation(order Order) *linebot.TextMessage {
+func makeHalfConfirmation(order Order, price string) *linebot.TextMessage {
 	var menuText string
-	var priceText int
 
-	for i, item := range order.MenuList {
-		if i == 0 {
-			menuText = item.Name
-		} else {
-			menuText += ", " + item.Name
-		}
-		priceText += item.Price
+	for item, n := range order.products {
+		menuText += item + " × " + strconv.Itoa(n) + "\n"
 	}
-	return linebot.NewTextMessage(fmt.Sprintf("ご注文途中確認\n\nお間違いなければ次のステップに移ります。\n\n1. 日程 : %s\n2. 時間 : %s\n3. 品物: %s\n\n4. お会計 : %d", order.Date, order.Time, menuText, priceText))
+	return linebot.NewTextMessage(fmt.Sprintf("ご注文途中確認\n\nお間違いなければ次のステップに移ります。\n\n1. 日程 : %s\n2. 時間 : %s\n3. 品物: %s\n\n4. お会計 : %d", order.Date, order.Time, menuText, price))
 }
 
 // makeLocation は 発送先用のメッセージを返すメソッドです。
-func makeLocationMessage() *linebot.TemplateMessage {
+func makeLocationMessage(locations []Location) *linebot.TemplateMessage {
 	title := "発送先指定"
 	phrase := "発送先を選択下さい。"
 
-	// このエラーが解けない
-	// cannot use actions (variable of type []*linebot.MessageAction) as []linebot.TemplateAction value in argument to linebot.NewButtonsTemplate
-
-	// var actions []*linebot.MessageAction
-	// for _, location := range locations {
-	// 	actions = append(actions,
-	// 		linebot.NewMessageAction(location, location),
-	// 	)
-	// }
-
-	// template := linebot.NewButtonsTemplate(
-	// 	"", title, phrase,
-	// 	actions...,
-	// )
-
 	template := linebot.NewButtonsTemplate(
 		"", title, phrase,
-		linebot.NewMessageAction(locations[0], locations[0]),
-		linebot.NewMessageAction(locations[1], locations[1]),
+		linebot.NewMessageAction(locations[0].Name, locations[0].Name),
+		linebot.NewMessageAction(locations[1].Name, locations[1].Name),
 	)
 	return linebot.NewTemplateMessage(title, template)
 }
 
 // makeConfirmationText は 注文確認テキスト用メッセージを返すメソッドです。
-func makeConfirmationTextMessage(order Order) *linebot.TextMessage {
+func makeConfirmationTextMessage(order Order, price string) *linebot.TextMessage {
 	var menuText string
-	var priceText int
 
-	for i, item := range order.MenuList {
-		if i == 0 {
-			menuText = item.Name
-		} else {
-			menuText += ", " + item.Name
-		}
-		priceText += item.Price
+	for item, n := range order.products {
+		menuText += item + " × " + strconv.Itoa(n) + "\n"
 	}
+
 	orderDetail := fmt.Sprintf("ご注文内容確認\n\n1. 日程 : %s\n2. 時間 : %s\n3. 発送場所: %s\n3. 品物 : %s\n\n4. お会計: ¥%d",
-		order.Date, order.Time, order.Location, menuText, priceText)
+		order.Date, order.Time, order.Location, menuText, price)
 
 	return linebot.NewTextMessage(orderDetail)
 }
@@ -266,4 +188,177 @@ func makeThankYouMessage() *linebot.TextMessage {
 func makeSorryMessage(cause string) *linebot.TextMessage {
 	message := "申し訳ありません。\n" + cause + "\n最初から注文をやり直してください。"
 	return linebot.NewTextMessage(message)
+}
+
+func makeMenuCard(item item) *linebot.BubbleContainer {
+	return &linebot.BubbleContainer{
+		Type: "bubble",
+		Hero: &linebot.ImageComponent{
+			Type:        linebot.FlexComponentTypeImage,
+			URL:         item.PictureURL,
+			Size:        linebot.FlexImageSizeTypeFull,
+			AspectRatio: linebot.FlexImageAspectRatioType20to13,
+			AspectMode:  linebot.FlexImageAspectModeTypeCover,
+		},
+		Body: &linebot.BoxComponent{
+			Type:    linebot.FlexComponentTypeBox,
+			Layout:  linebot.FlexBoxLayoutTypeVertical,
+			Spacing: linebot.FlexComponentSpacingTypeMd,
+			Contents: []linebot.FlexComponent{
+				&linebot.BoxComponent{
+					Type:    linebot.FlexComponentTypeBox,
+					Layout:  linebot.FlexBoxLayoutTypeBaseline,
+					Spacing: linebot.FlexComponentSpacingTypeSm,
+					Contents: []linebot.FlexComponent{
+						&linebot.TextComponent{
+							Type:  linebot.FlexComponentTypeText,
+							Text:  "Name",
+							Color: "#aaaaaa",
+							Size:  linebot.FlexTextSizeTypeSm,
+							Flex:  linebot.IntPtr(1),
+						},
+						&linebot.TextComponent{
+							Type:   linebot.FlexComponentTypeText,
+							Text:   item.Name,
+							Weight: linebot.FlexTextWeightTypeBold,
+							Size:   linebot.FlexTextSizeTypeMd,
+							Flex:   linebot.IntPtr(5),
+						},
+					},
+				},
+				&linebot.BoxComponent{
+					Type:    linebot.FlexComponentTypeBox,
+					Layout:  linebot.FlexBoxLayoutTypeVertical,
+					Spacing: linebot.FlexComponentSpacingTypeSm,
+					Contents: []linebot.FlexComponent{
+						&linebot.TextComponent{
+							Type:  linebot.FlexComponentTypeText,
+							Text:  "Price",
+							Color: "#aaaaaa",
+							Size:  linebot.FlexTextSizeTypeSm,
+							Flex:  linebot.IntPtr(1),
+						},
+						&linebot.TextComponent{
+							Type:   linebot.FlexComponentTypeText,
+							Text:   strconv.Itoa(item.Price),
+							Weight: linebot.FlexTextWeightTypeBold,
+							Size:   linebot.FlexTextSizeTypeMd,
+							Flex:   linebot.IntPtr(5),
+						},
+					},
+				},
+				&linebot.BoxComponent{
+					Type:    linebot.FlexComponentTypeBox,
+					Layout:  linebot.FlexBoxLayoutTypeVertical,
+					Spacing: linebot.FlexComponentSpacingTypeSm,
+					Contents: []linebot.FlexComponent{
+						&linebot.TextComponent{
+							Type:  linebot.FlexComponentTypeText,
+							Text:  "注文したい個数をお選びください。",
+							Align: linebot.FlexComponentAlignTypeCenter,
+							Color: "#979A99",
+						},
+					},
+				},
+			},
+		},
+		Footer: &linebot.BoxComponent{
+			Type:    linebot.FlexComponentTypeBox,
+			Layout:  linebot.FlexBoxLayoutTypeHorizontal,
+			Spacing: linebot.FlexComponentSpacingTypeMd,
+			Contents: []linebot.FlexComponent{
+				&linebot.ButtonComponent{
+					Type:   linebot.FlexComponentTypeButton,
+					Style:  linebot.FlexButtonStyleTypePrimary,
+					Color:  "#009944",
+					Action: linebot.NewMessageAction("× 1", item.Name+"×1"),
+				},
+				&linebot.ButtonComponent{
+					Type:   linebot.FlexComponentTypeButton,
+					Style:  linebot.FlexButtonStyleTypePrimary,
+					Color:  "#009944",
+					Action: linebot.NewMessageAction("× 2", item.Name+"×2"),
+				},
+				&linebot.ButtonComponent{
+					Type:   linebot.FlexComponentTypeButton,
+					Style:  linebot.FlexButtonStyleTypePrimary,
+					Color:  "#009944",
+					Action: linebot.NewMessageAction("× 3", item.Name+"×3"),
+				},
+			},
+		},
+	}
+}
+
+func makeDecideButton() *linebot.BubbleContainer {
+
+	return &linebot.BubbleContainer{
+		Type: "bubble",
+		Hero: &linebot.ImageComponent{
+			Type:        linebot.FlexComponentTypeImage,
+			URL:         "https://mitkp.com/wp-content/uploads/2017/04/pop_kettei.png",
+			Size:        linebot.FlexImageSizeTypeFull,
+			AspectRatio: linebot.FlexImageAspectRatioType20to13,
+			AspectMode:  linebot.FlexImageAspectModeTypeCover,
+		},
+		Body: &linebot.BoxComponent{
+			Type:    linebot.FlexComponentTypeBox,
+			Layout:  linebot.FlexBoxLayoutTypeVertical,
+			Spacing: linebot.FlexComponentSpacingTypeMd,
+			Contents: []linebot.FlexComponent{
+				&linebot.BoxComponent{
+					Type:    linebot.FlexComponentTypeBox,
+					Layout:  linebot.FlexBoxLayoutTypeBaseline,
+					Spacing: linebot.FlexComponentSpacingTypeSm,
+					Contents: []linebot.FlexComponent{
+						&linebot.TextComponent{
+							Type:   linebot.FlexComponentTypeText,
+							Text:   "次に進む",
+							Weight: linebot.FlexTextWeightTypeBold,
+							Size:   linebot.FlexTextSizeTypeMd,
+							Flex:   linebot.IntPtr(5),
+						},
+					},
+				},
+				&linebot.BoxComponent{
+					Type:    linebot.FlexComponentTypeBox,
+					Layout:  linebot.FlexBoxLayoutTypeVertical,
+					Spacing: linebot.FlexComponentSpacingTypeSm,
+					Contents: []linebot.FlexComponent{
+						&linebot.TextComponent{
+							Type:  linebot.FlexComponentTypeText,
+							Text:  "注文が決まりましたら押してください。",
+							Align: linebot.FlexComponentAlignTypeCenter,
+							Color: "#979A99",
+						},
+					},
+				},
+			},
+		},
+		Footer: &linebot.BoxComponent{
+			Type:    linebot.FlexComponentTypeBox,
+			Layout:  linebot.FlexBoxLayoutTypeHorizontal,
+			Spacing: linebot.FlexComponentSpacingTypeMd,
+			Contents: []linebot.FlexComponent{
+				&linebot.ButtonComponent{
+					Type:   linebot.FlexComponentTypeButton,
+					Style:  linebot.FlexButtonStyleTypePrimary,
+					Color:  "#009944",
+					Action: linebot.NewMessageAction("注文決定", "注文決定"),
+				},
+			},
+		},
+	}
+}
+
+func (m Menu) calcPrice(products products) int {
+	var price int
+	for item, n := range products {
+		for _, v := range m {
+			if v.Name == item {
+				price = v.Price * n
+			}
+		}
+	}
+	return price
 }
