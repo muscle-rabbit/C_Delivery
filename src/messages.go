@@ -8,31 +8,53 @@ import (
 	"github.com/line/line-bot-sdk-go/linebot"
 )
 
-type item struct {
-	Name       string `firestore:"name,omitempty"  json:"name"`
-	Price      int    `firestore:"price,omitempty"  json:"price"`
-	PictureURL string `firestore:"picture_url,omitempty"  json:"id" json:"picture_url"`
+type Item struct {
+	ID         string
+	Name       string `firestore:"name,omitempty"`
+	Price      int    `firestore:"price,omitempty"`
+	PictureURL string `firestore:"picture_url,omitempty"`
 }
 
-type Menu []item
+type Menu []Item
 
-func (m Menu) searchItemByName(key string) item {
+func (m Menu) searchItemByName(key string) Item {
 	for _, item := range m {
 		if item.Name == key {
 			return item
 		}
 	}
 	// TODO: nil を返したい。
-	return item{}
+	return Item{}
+}
+
+func (m Menu) searchItemIDByName(key string) string {
+	for _, item := range m {
+		if item.Name == key {
+			return item.ID
+		}
+	}
+	return ""
+}
+
+func (m Menu) searchItemNameByID(id string) string {
+	for _, item := range m {
+		if item.ID == id {
+			return item.Name
+		}
+	}
+	return ""
 }
 
 var wdays = [...]string{"日", "月", "火", "水", "木", "金", "土"}
 
 type Order struct {
-	Date     string `json:"date"`
-	Time     string `json:"time"`
-	Location string `json:"location"`
-	products products
+	UserID    string    `firestore:"user_id,omitempty"`
+	Date      string    `firestore:"date,omitempty"`
+	Time      string    `firestore:"time,omitempty"`
+	Location  string    `firestore:"location,omitempty"`
+	Products  Products  `firestore:"products,omitempty"`
+	CreatedAt time.Time `firestore:"created_at,omitempty"`
+	UpdatedAt time.Time `firestore:"updated_at,omitempty"`
 }
 
 func (bh businessHours) makeTimeTable() []string {
@@ -130,13 +152,13 @@ func makeMenuMessage(menu Menu) *linebot.FlexMessage {
 	return message
 }
 
-func makeHalfConfirmation(order Order, price string) *linebot.TextMessage {
+func makeHalfConfirmation(products Products, menu Menu, order Order, price int) *linebot.TextMessage {
 	var menuText string
 
-	for item, n := range order.products {
-		menuText += item + " × " + strconv.Itoa(n) + "\n"
+	for id, n := range products {
+		menuText += "・" + menu.searchItemNameByID(id) + " x " + strconv.Itoa(n) + "\n"
 	}
-	return linebot.NewTextMessage(fmt.Sprintf("ご注文途中確認\n\nお間違いなければ次のステップに移ります。\n\n1. 日程 : %s\n2. 時間 : %s\n3. 品物: %s\n\n4. お会計 : %d", order.Date, order.Time, menuText, price))
+	return linebot.NewTextMessage(fmt.Sprintf("ご注文途中確認\n\nお間違いなければ次のステップに移ります。\n\n1. 日程 : %s\n2. 時間 : %s\n3. 品物: \n%s\n\n4. お会計 : ¥%d", order.Date, order.Time, menuText, price))
 }
 
 // makeLocation は 発送先用のメッセージを返すメソッドです。
@@ -153,14 +175,14 @@ func makeLocationMessage(locations []Location) *linebot.TemplateMessage {
 }
 
 // makeConfirmationText は 注文確認テキスト用メッセージを返すメソッドです。
-func makeConfirmationTextMessage(order Order, price string) *linebot.TextMessage {
+func makeConfirmationTextMessage(products Products, menu Menu, order Order, price int) *linebot.TextMessage {
 	var menuText string
 
-	for item, n := range order.products {
-		menuText += item + " × " + strconv.Itoa(n) + "\n"
+	for id, n := range products {
+		menuText += "・" + menu.searchItemNameByID(id) + " x " + strconv.Itoa(n) + "\n"
 	}
 
-	orderDetail := fmt.Sprintf("ご注文内容確認\n\n1. 日程 : %s\n2. 時間 : %s\n3. 発送場所: %s\n3. 品物 : %s\n\n4. お会計: ¥%d",
+	orderDetail := fmt.Sprintf("ご注文内容確認\n\n1. 日程 : %s\n2. 時間 : %s\n3. 発送場所: %s\n3. 品物 : \n%s\n4. お会計: ¥%d",
 		order.Date, order.Time, order.Location, menuText, price)
 
 	return linebot.NewTextMessage(orderDetail)
@@ -190,7 +212,7 @@ func makeSorryMessage(cause string) *linebot.TextMessage {
 	return linebot.NewTextMessage(message)
 }
 
-func makeMenuCard(item item) *linebot.BubbleContainer {
+func makeMenuCard(item Item) *linebot.BubbleContainer {
 	return &linebot.BubbleContainer{
 		Type: "bubble",
 		Hero: &linebot.ImageComponent{
@@ -240,7 +262,7 @@ func makeMenuCard(item item) *linebot.BubbleContainer {
 						},
 						&linebot.TextComponent{
 							Type:   linebot.FlexComponentTypeText,
-							Text:   strconv.Itoa(item.Price),
+							Text:   "¥" + strconv.Itoa(item.Price),
 							Weight: linebot.FlexTextWeightTypeBold,
 							Size:   linebot.FlexTextSizeTypeMd,
 							Flex:   linebot.IntPtr(5),
@@ -271,19 +293,19 @@ func makeMenuCard(item item) *linebot.BubbleContainer {
 					Type:   linebot.FlexComponentTypeButton,
 					Style:  linebot.FlexButtonStyleTypePrimary,
 					Color:  "#009944",
-					Action: linebot.NewMessageAction("× 1", item.Name+"×1"),
+					Action: linebot.NewMessageAction("x 1", item.Name+"x1"),
 				},
 				&linebot.ButtonComponent{
 					Type:   linebot.FlexComponentTypeButton,
 					Style:  linebot.FlexButtonStyleTypePrimary,
 					Color:  "#009944",
-					Action: linebot.NewMessageAction("× 2", item.Name+"×2"),
+					Action: linebot.NewMessageAction("x 2", item.Name+"x2"),
 				},
 				&linebot.ButtonComponent{
 					Type:   linebot.FlexComponentTypeButton,
 					Style:  linebot.FlexButtonStyleTypePrimary,
 					Color:  "#009944",
-					Action: linebot.NewMessageAction("× 3", item.Name+"×3"),
+					Action: linebot.NewMessageAction("x 3", item.Name+"x3"),
 				},
 			},
 		},
@@ -351,12 +373,12 @@ func makeDecideButton() *linebot.BubbleContainer {
 	}
 }
 
-func (m Menu) calcPrice(products products) int {
+func (m Menu) calcPrice(products Products) int {
 	var price int
-	for item, n := range products {
+	for id, n := range products {
 		for _, v := range m {
-			if v.Name == item {
-				price = v.Price * n
+			if v.ID == id {
+				price += v.Price * n
 			}
 		}
 	}

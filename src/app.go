@@ -20,9 +20,10 @@ type sessionStore struct {
 }
 
 type userSession struct {
+	orderID   string
 	prevStep  int
 	createdAt time.Time
-	order     Order
+	products  Products
 }
 
 type sessions map[string]*userSession
@@ -32,7 +33,6 @@ type service struct {
 	locations     []Location
 	businessHours businessHours
 	detailTime    detailTime
-	stockTable    stockTable
 }
 
 type Location struct {
@@ -40,6 +40,7 @@ type Location struct {
 }
 
 type businessHours struct {
+	today     string
 	begin     detailTime `firestore:"begin,omitempty"`
 	end       detailTime `firestore:"end,omitempty"`
 	interval  int        `firestore:"interval,omitempty"`
@@ -51,55 +52,11 @@ type detailTime struct {
 	minute int
 }
 
-type stockTable struct {
-	read  chan products
-	write chan writeProductsCh
-	stock products
-}
-
-type products map[string]int
-
-type writeProductsCh struct {
-	action   string
-	products products
-}
-
-func (st *stockTable) run() {
-	for {
-		select {
-		case ch := <-st.write:
-			st.stock.push(products)
-		case products := <-st.read:
-			// Todo: 在庫がなかったら subtract の channel を閉じる。
-			// Todo: 在庫がまた復活したら sbutract の channel を開ける。
-			st.stock.subtract(products)
-		}
-	}
-}
-
-func (p products) push(new products) {
-	for newItem, newN := range new {
-		p[newItem] += newN
-	}
-}
-
-func (p products) subtract(new products) {
-	for newItem, newN := range new {
-		p[newItem] -= newN
-	}
-}
-
-func (p products) write(writeProductsCh) {
-	action := writeProductsCh.action
-	switch writeProductsCh.action {
-	case "push":
-		p.push(writeProductsCh.products)
-
-	}
-}
+// map[{products Document の ID}] 個数
+type Products map[string]int
 
 func (ss *sessionStore) createSession(userID string) *userSession {
-	ss.sessions[userID] = &userSession{prevStep: begin, createdAt: time.Now(), order: Order{products: make(products)}}
+	ss.sessions[userID] = &userSession{prevStep: begin, createdAt: time.Now(), products: make(Products)}
 	return ss.sessions[userID]
 }
 
