@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"time"
 
 	firebase "firebase.google.com/go"
@@ -8,7 +9,7 @@ import (
 )
 
 type app struct {
-	bot          *linebot.Client
+	bot          *bot
 	client       *firebase.App
 	sessionStore *sessionStore
 	service      *service
@@ -17,6 +18,10 @@ type app struct {
 type sessionStore struct {
 	sessions sessions
 	lifespan time.Duration
+}
+
+type bot struct {
+	client *linebot.Client
 }
 
 type userSession struct {
@@ -78,4 +83,13 @@ func (ss *sessionStore) searchSession(userID string) *userSession {
 		return ss.sessions[userID]
 	}
 	return nil
+}
+
+func (bot *bot) createBot() error {
+	var err error
+	bot.client, err = linebot.New(os.Getenv("CHANNEL_SECRET"), os.Getenv("CHANNEL_TOKEN"))
+	if err != nil {
+		return err
+	}
+	return err
 }

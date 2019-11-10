@@ -59,6 +59,11 @@ func newApp() (*app, error) {
 	//
 	app.service.businessHours = businessHours{today: parseTime(time.Now()), begin: detailTime{12, 00}, end: detailTime{15, 00}, interval: 30, lastorder: "12:30"}
 
+	// linebot の初期化
+	if err := app.bot.createBot(); err != nil {
+		return nil, err
+	}
+
 	return app, nil
 
 }

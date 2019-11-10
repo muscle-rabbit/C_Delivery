@@ -22,8 +22,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// cookieStore は client のセッション ID をまとめて管理する
-	app.bot, err = linebot.New(os.Getenv("CHANNEL_SECRET"), os.Getenv("CHANNEL_TOKEN"))
+	// linebot の生成。
 
 	// gin の生成。
 	r := gin.Default()
