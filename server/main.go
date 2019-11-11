@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -33,7 +32,8 @@ func main() {
 	// linebot のリクエストエンドポイント
 	r.POST("/callback", app.callbackHandler)
 
-	r.GET("/order_list", app.orderListHandler)
+	r.GET("/order_list", app.getOrderListHandler)
+	r.POST("/order/:document_id", app.postOrderHandler)
 
 	port := os.Getenv("PORT")
 	addr := fmt.Sprintf(":%s", port)
@@ -73,19 +73,22 @@ func (app *app) callbackHandler(g *gin.Context) {
 	}
 }
 
-func (app *app) orderListHandler(g *gin.Context) {
+func (app *app) getOrderListHandler(g *gin.Context) {
 	// json でパース
 	orderList, err := app.fetchOrders()
 	if err != nil {
-		fmt.Errorf("couldn't fetchOrders in orderListHandler: %v", err)
+		g.Error(fmt.Errorf("couldn't fetchOrders in orderListHandler: %v", err))
 	}
 
-	jsonString, err := json.Marshal(orderList)
-	if err != nil {
-		fmt.Errorf("couldn't marshal json: %v", err)
-	}
-
-	g.Writer.Header().Set("Content-Type", "application/json")
-	g.Writer.Write(jsonString)
+	g.JSON(200, orderList)
 	return
+}
+
+func (app *app) postOrderHandler(g *gin.Context) {
+	var order Order
+	documentID := g.Param("document_id")
+	g.BindJSON(&order)
+	if err := app.updateOrderFromDeliveryPanel(documentID, order); err != nil {
+		g.Error(fmt.Errorf("couldn't update order in updateOrderFromDeliveryPanel: %v", err))
+	}
 }

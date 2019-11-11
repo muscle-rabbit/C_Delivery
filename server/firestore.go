@@ -147,7 +147,7 @@ func (app *app) createOrder(userID string) error {
 	return nil
 }
 
-func (app *app) updateOrder(userID string, order Order, prevStep int) error {
+func (app *app) updateOrderInChat(userID string, order Order, prevStep int) error {
 	userSession := app.sessionStore.sessions[userID]
 
 	ctx := context.Background()
@@ -185,6 +185,22 @@ func (app *app) updateOrder(userID string, order Order, prevStep int) error {
 			"location": order.Location,
 		}, firestore.MergeAll)
 	}
+	return nil
+}
+
+func (app *app) updateOrderFromDeliveryPanel(documentID string, order Order) error {
+	userSession := app.sessionStore.sessions[order.UserID]
+	ctx := context.Background()
+	client, err := app.client.Firestore(ctx)
+	if err != nil {
+		return fmt.Errorf("couldn't create client in addUser: %v", err)
+	}
+
+	_, err = client.Collection("orders").Doc(userSession.orderID).Set(ctx, order, firestore.MergeAll)
+	if err != nil {
+		return fmt.Errorf("couldn't update order in updateOrder: %v", err)
+	}
+
 	return nil
 }
 

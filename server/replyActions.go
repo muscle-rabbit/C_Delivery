@@ -87,7 +87,7 @@ func (app *app) replyReservationTime(event *linebot.Event, userID string) error 
 	// TODO: 冗長なのでリファクタ必要。event.Message.Text みたいな使い方したい。
 	switch message := event.Message.(type) {
 	case *linebot.TextMessage:
-		if err := app.updateOrder(userID, Order{
+		if err := app.updateOrderInChat(userID, Order{
 			Date: message.Text,
 		}, session.prevStep); err != nil {
 			return err
@@ -110,7 +110,7 @@ func (app *app) replyMenu(event *linebot.Event, userID string) error {
 	case *linebot.TextMessage:
 		if isTimeMessage(message.Text) {
 			// メニューカルセールを返す。
-			app.updateOrder(userID, Order{Time: message.Text}, session.prevStep)
+			app.updateOrderInChat(userID, Order{Time: message.Text}, session.prevStep)
 			if _, err := app.bot.client.ReplyMessage(event.ReplyToken, makeMenuTextMessage(), makeMenuMessage(app.service.menu)).Do(); err != nil {
 				return err
 			}
@@ -132,7 +132,7 @@ func (app *app) replyMenu(event *linebot.Event, userID string) error {
 			if err := session.products.parseProductsText(message.Text, app.service.menu); err != nil {
 				return err
 			}
-			app.updateOrder(userID, Order{Products: session.products}, session.prevStep)
+			app.updateOrderInChat(userID, Order{Products: session.products}, session.prevStep)
 		}
 	}
 	return nil
@@ -174,7 +174,7 @@ func (app *app) replyConfirmation(event *linebot.Event, userID string) error {
 	// TODO: 冗長なのでリファクタ必要。event.Message.Text みたいな使い方したい。
 	switch message := event.Message.(type) {
 	case *linebot.TextMessage:
-		if err := app.updateOrder(userID, Order{Location: message.Text}, session.prevStep); err != nil {
+		if err := app.updateOrderInChat(userID, Order{Location: message.Text}, session.prevStep); err != nil {
 			return err
 		}
 	}
