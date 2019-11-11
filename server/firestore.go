@@ -37,6 +37,7 @@ func newApp() (*app, error) {
 	}
 
 	app := &app{
+		bot:          &bot{},
 		client:       client,
 		sessionStore: &sessionStore{lifespan: time.Minute * 10, sessions: make(sessions)},
 		service:      &service{},

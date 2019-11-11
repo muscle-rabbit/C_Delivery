@@ -7,11 +7,14 @@
   "scripts": {
     "dev": "webpack-dev-server --inline --progress --config build/webpack.dev.conf.js",
     "start": "npm run dev",
-    "lint": "eslint --ext .js,.vue src",
+    "lint": "eslint --ext .js,.vue src --fix",
     "build": "node build/build.js"
   },
   "dependencies": {
+    "@firebase/firestore": "^1.7.0",
+    "bootstrap-vue": "^2.0.4",
     "vue": "^2.5.2",
+    "vue-firestore": "^0.3.22",
     "vue-router": "^3.0.1"
   },
   "devDependencies": {

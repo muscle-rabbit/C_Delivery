@@ -16,16 +16,18 @@ func main() {
 		log.Fatal("Error loading .env file")
 	}
 
-	// firestore の初期化
+	// app の初期化
 	app, err := newApp()
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	// linebot の生成。
-
 	// gin の生成。
 	r := gin.Default()
+	r.LoadHTMLGlob("../dist/*.html")        // load the built dist path
+	r.LoadHTMLFiles("static/*/*")           //  load the static path
+	r.Static("/static", "../dist/static")   // use the loaded source
+	r.StaticFile("/", "../dist/index.html") // use the loaded sourc
 	r.POST("/callback", app.callbackHandler)
 
 	port := os.Getenv("PORT")
@@ -34,7 +36,7 @@ func main() {
 }
 
 func (app *app) callbackHandler(g *gin.Context) {
-	events, err := app.bot.ParseRequest(g.Request)
+	events, err := app.bot.client.ParseRequest(g.Request)
 
 	if err != nil {
 		if err == linebot.ErrInvalidSignature {
@@ -47,7 +49,7 @@ func (app *app) callbackHandler(g *gin.Context) {
 
 	for _, event := range events {
 		if event.Type == linebot.EventTypeMessage {
-			p, _ := app.bot.GetProfile(event.Source.UserID).Do()
+			p, _ := app.bot.client.GetProfile(event.Source.UserID).Do()
 			docID, err := app.addUser(p)
 			if err != nil {
 				log.Fatal(err)

@@ -76,7 +76,7 @@ func (app *app) replyReservationDate(event *linebot.Event, userID string) error 
 	session := app.sessionStore.searchSession(userID)
 	session.prevStep = reservateDate
 
-	if _, err := app.bot.ReplyMessage(event.ReplyToken, makeReservationDateMessage()).Do(); err != nil {
+	if _, err := app.bot.client.ReplyMessage(event.ReplyToken, makeReservationDateMessage()).Do(); err != nil {
 		return err
 	}
 	return nil
@@ -97,7 +97,7 @@ func (app *app) replyReservationTime(event *linebot.Event, userID string) error 
 	session.prevStep = reservateTime
 	bh := app.service.businessHours
 
-	if _, err := app.bot.ReplyMessage(event.ReplyToken, makeReservationTimeMessage(bh.makeTimeTable(), bh.lastorder)).Do(); err != nil {
+	if _, err := app.bot.client.ReplyMessage(event.ReplyToken, makeReservationTimeMessage(bh.makeTimeTable(), bh.lastorder)).Do(); err != nil {
 		return err
 	}
 	return nil
@@ -111,7 +111,7 @@ func (app *app) replyMenu(event *linebot.Event, userID string) error {
 		if isTimeMessage(message.Text) {
 			// メニューカルセールを返す。
 			app.updateOrder(userID, Order{Time: message.Text}, session.prevStep)
-			if _, err := app.bot.ReplyMessage(event.ReplyToken, makeMenuTextMessage(), makeMenuMessage(app.service.menu)).Do(); err != nil {
+			if _, err := app.bot.client.ReplyMessage(event.ReplyToken, makeMenuTextMessage(), makeMenuMessage(app.service.menu)).Do(); err != nil {
 				return err
 			}
 		} else if message.Text == "注文決定" {
@@ -124,7 +124,7 @@ func (app *app) replyMenu(event *linebot.Event, userID string) error {
 				return err
 			}
 
-			if _, err := app.bot.ReplyMessage(event.ReplyToken, makeHalfConfirmation(session.products, app.service.menu, order, price), makeConfirmationButtonMessage()).Do(); err != nil {
+			if _, err := app.bot.client.ReplyMessage(event.ReplyToken, makeHalfConfirmation(session.products, app.service.menu, order, price), makeConfirmationButtonMessage()).Do(); err != nil {
 				return err
 			}
 		} else {
@@ -162,7 +162,7 @@ func (app *app) replyLocation(event *linebot.Event, userID string) error {
 
 	session.prevStep = setLocation
 
-	if _, err := app.bot.ReplyMessage(event.ReplyToken, makeLocationMessage(app.service.locations)).Do(); err != nil {
+	if _, err := app.bot.client.ReplyMessage(event.ReplyToken, makeLocationMessage(app.service.locations)).Do(); err != nil {
 		return err
 	}
 	return nil
@@ -185,7 +185,7 @@ func (app *app) replyConfirmation(event *linebot.Event, userID string) error {
 	if err != nil {
 		return err
 	}
-	if _, err := app.bot.ReplyMessage(event.ReplyToken, makeConfirmationTextMessage(session.products, app.service.menu, order, price), makeConfirmationButtonMessage()).Do(); err != nil {
+	if _, err := app.bot.client.ReplyMessage(event.ReplyToken, makeConfirmationTextMessage(session.products, app.service.menu, order, price), makeConfirmationButtonMessage()).Do(); err != nil {
 		return err
 	}
 	return nil
@@ -215,14 +215,14 @@ func (app *app) replyThankYou(event *linebot.Event, userID string) error {
 	session.prevStep = begin
 	app.sessionStore.deleteUserSession(userID)
 
-	if _, err := app.bot.ReplyMessage(event.ReplyToken, makeThankYouMessage()).Do(); err != nil {
+	if _, err := app.bot.client.ReplyMessage(event.ReplyToken, makeThankYouMessage()).Do(); err != nil {
 		return err
 	}
 
 	return nil
 }
 func (app *app) replySorry(event *linebot.Event, userID string, cause string) error {
-	if _, err := app.bot.ReplyMessage(event.ReplyToken, makeSorryMessage(cause), makeReservationDateMessage()).Do(); err != nil {
+	if _, err := app.bot.client.ReplyMessage(event.ReplyToken, makeSorryMessage(cause), makeReservationDateMessage()).Do(); err != nil {
 		return err
 	}
 
