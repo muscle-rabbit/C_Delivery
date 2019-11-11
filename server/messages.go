@@ -48,14 +48,17 @@ func (m Menu) searchItemNameByID(id string) string {
 var wdays = [...]string{"日", "月", "火", "水", "木", "金", "土"}
 
 type Order struct {
-	UserID    string    `firestore:"user_id,omitempty"`
-	Date      string    `firestore:"date,omitempty"`
-	Time      string    `firestore:"time,omitempty"`
-	Location  string    `firestore:"location,omitempty"`
-	Products  Products  `firestore:"products,omitempty"`
-	CreatedAt time.Time `firestore:"created_at,omitempty"`
-	UpdatedAt time.Time `firestore:"updated_at,omitempty"`
+	UserID    string    `firestore:"user_id,omitempty" json:"user_id"`
+	Date      string    `firestore:"date,omitempty" json:"date"`
+	Time      string    `firestore:"time,omitempty" json:"time"`
+	Location  string    `firestore:"location,omitempty" json:"location"`
+	Products  Products  `firestore:"products,omitempty" json:"products"`
+	CreatedAt time.Time `firestore:"created_at,omitempty"json:"created_at"`
+	UpdatedAt time.Time `firestore:"updated_at,omitempty" json:"updated_at"`
+	Finished  bool      `firestore:"finished,omitempty" json:"finished"`
 }
+
+type OrderList map[string]Order
 
 func (bh businessHours) makeTimeTable() []string {
 	today := time.Now()

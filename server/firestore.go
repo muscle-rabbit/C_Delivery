@@ -99,6 +99,35 @@ func (app *app) addUser(profile *linebot.UserProfileResponse) (string, error) {
 	return "", nil
 }
 
+func (app *app) fetchOrders() (OrderList, error) {
+	orderList := make(OrderList)
+
+	ctx := context.Background()
+	client, err := app.client.Firestore(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("couldn't create oreder in fetchUserOrderID: %v", err)
+	}
+
+	iter := client.Collection("orders").Documents(ctx)
+	for {
+		var order Order
+		doc, err := iter.Next()
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		err = doc.DataTo(&order)
+		if err != nil {
+			return nil, err
+		}
+		orderList[doc.Ref.ID] = order
+	}
+
+	return orderList, err
+}
+
 func (app *app) createOrder(userID string) error {
 	userSession := app.sessionStore.sessions[userID]
 
