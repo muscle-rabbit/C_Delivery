@@ -1,64 +1,66 @@
 <template>
   <div>
     <h1 class="border-bottom title">注文票</h1>
-    <b-card-group deck>
-      <b-card
-        class="mb-2"
-        :title="`#`+(i+1)"
-        img-alt="Image"
-        img-top
-        tag="article"
-        style="max-width: 20rem;"
-        v-for="(item,i) in items"
-        :key="i"
-      >
-        <b-card-text class="card-text">注文者: {{item.orderBy}}</b-card-text>
-        <b-card-text class="card-text">日程: {{item.date}}</b-card-text>
-        <b-card-text class="card-text">時間: {{item.time}}</b-card-text>
-        <b-button href="#" variant="primary">注文詳細</b-button>
-      </b-card>
+    <b-card-group deck v-for="(orderDocument,i) in orderDocuments" :key="i" class="card_group">
+      <card
+        :orderDocument="orderDocument"
+        :onClickToggleFinishedStatus="onClickToggleFinishedStatus"
+        :title="`#`+i"
+      />
     </b-card-group>
   </div>
 </template>
 
 <script>
-import { BCard, BCardGroup, BCardText, BButton } from 'bootstrap-vue'
+import axios from 'axios'
+import { BCardGroup, BCardText, BButton } from 'bootstrap-vue'
+import Card from './Card'
 export default {
   components: {
-    BCard,
+    Card,
     BCardGroup,
     BCardText,
     BButton
   },
   data () {
     return {
-      items: [
-        {
-          orderBy: 'mizuno',
-          date: '本日 11/9 (土)',
-          time: '12:00AM~12:30AM',
-          detail: '注文詳細はこちら'
-        },
-        {
-          orderBy: 'mizuno',
-          date: '本日 11/9 (土)',
-          time: '12:00AM~12:30AM',
-          detail: '注文詳細はこちら'
-        },
-        {
-          orderBy: 'mizuno',
-          date: '本日 11/9 (土)',
-          time: '12:00AM~12:30AM',
-          detail: '注文詳細はこちら'
-        },
-        {
-          orderBy: 'mizuno',
-          date: '本日 11/9 (土)',
-          time: '12:00AM~12:30AM',
-          detail: '注文詳細はこちら'
-        }
-      ]
+      orderDocuments: []
     }
+  },
+  methods: {
+    onClickToggleFinishedStatus: function (documentID) {
+      let selected = this.orderDocuments.find(orderDocument => {
+        return orderDocument.documentID === documentID
+      })
+      selected.order.finished = !selected.order.finished
+      if (selected) {
+        axios
+          .post(`http://localhost:1964/order`, selected)
+          .then(function () {
+            this.orderDocuments = this.orderDocuments.map(function (
+              orderDocument
+            ) {
+              if (orderDocument.documentID === documentID) {
+                return selected
+              }
+              return orderDocument
+            })
+          })
+          .catch(function (e) {
+            console.error(e)
+          })
+      }
+    }
+  },
+  mounted () {
+    axios
+      .get('http://localhost:1964/order_list')
+      .then(r => {
+        this.orderDocuments = r.data
+      })
+      .catch(e => {
+        console.error(e)
+      })
   }
 }
 </script>
@@ -73,13 +75,7 @@ export default {
   margin-bottom: 20px;
   font-size: 1.5rem;
 }
-.mb-2 {
-  margin: auto;
-}
-.card-text {
-  text-align: left;
-}
-.card-title {
-  text-align: left;
+.card_group {
+  justify-content: center;
 }
 </style>

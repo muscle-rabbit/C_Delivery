@@ -22,12 +22,11 @@ func (app *app) reply(event *linebot.Event, userID string) *appError {
 	session := app.sessionStore.searchSession(userID)
 	if session == nil {
 		session = app.sessionStore.createSession(userID)
-		// err := app.createOrder(userID)
-		session.orderID = "VvPwHOtxqO99QrVPPgYXiBWVKbyYD7e85p4B68QmZqY"
+		err := app.createOrder(userID)
 
-		// if err != nil {
-		// 	return appErrorf(err, "couldn't create order doc")
-		// }
+		if err != nil {
+			return appErrorf(err, "couldn't create order doc")
+		}
 	}
 
 	if !app.sessionStore.checkSessionLifespan(userID) {
@@ -210,9 +209,10 @@ func (app *app) replyFinalMessage(event *linebot.Event, userID string) error {
 }
 
 func (app *app) replyThankYou(event *linebot.Event, userID string) error {
-	session := app.sessionStore.searchSession(userID)
+	if err := app.completeOrderInChat(userID); err != nil {
+		return err
+	}
 
-	session.prevStep = begin
 	app.sessionStore.deleteUserSession(userID)
 
 	if _, err := app.bot.client.ReplyMessage(event.ReplyToken, makeThankYouMessage()).Do(); err != nil {

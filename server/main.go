@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"time"
 
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 	"github.com/line/line-bot-sdk-go/linebot"
@@ -22,18 +24,27 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// gin の生成。
+	// gin の生成。静的ファイルサーバー
 	r := gin.Default()
 	r.LoadHTMLGlob("../dist/*.html")        // load the built dist path
 	r.LoadHTMLFiles("static/*/*")           //  load the static path
 	r.Static("/static", "../dist/static")   // use the loaded source
 	r.StaticFile("/", "../dist/index.html") // use the loaded sourc
 
+	r.Use(cors.New(cors.Config{
+		AllowOrigins:  []string{"http://localhost:8080"},
+		AllowMethods:  []string{"POST", "OPTIONS", "GET"},
+		AllowHeaders:  []string{"*"},
+		ExposeHeaders: []string{"Content-Length"},
+		MaxAge:        12 * time.Minute,
+	}))
+
 	// linebot のリクエストエンドポイント
 	r.POST("/callback", app.callbackHandler)
 
+	// 配達員画面からのエンドポイント
 	r.GET("/order_list", app.getOrderListHandler)
-	r.POST("/order/:document_id", app.postOrderHandler)
+	r.POST("/order", app.postOrderHandler)
 
 	port := os.Getenv("PORT")
 	addr := fmt.Sprintf(":%s", port)
@@ -60,13 +71,12 @@ func (app *app) callbackHandler(g *gin.Context) {
 				log.Fatal(err)
 			}
 
-			if err != nil {
-				log.Fatalf("couldn't create session: %v", err)
-			}
-			switch event.Message.(type) {
+			switch message := event.Message.(type) {
 			case *linebot.TextMessage:
-				if err := app.reply(event, docID); err != nil {
-					log.Fatal(err)
+				if message.Text == "予約開始" {
+					if err := app.reply(event, docID); err != nil {
+						log.Fatal(err)
+					}
 				}
 			}
 		}
@@ -74,21 +84,24 @@ func (app *app) callbackHandler(g *gin.Context) {
 }
 
 func (app *app) getOrderListHandler(g *gin.Context) {
-	// json でパース
-	orderList, err := app.fetchOrders()
+	orderDocuments, err := app.fetchOrderDocuments()
 	if err != nil {
 		g.Error(fmt.Errorf("couldn't fetchOrders in orderListHandler: %v", err))
 	}
 
-	g.JSON(200, orderList)
+	g.JSON(200, &orderDocuments)
 	return
 }
 
 func (app *app) postOrderHandler(g *gin.Context) {
-	var order Order
-	documentID := g.Param("document_id")
-	g.BindJSON(&order)
-	if err := app.updateOrderFromDeliveryPanel(documentID, order); err != nil {
+	var orderDocument OrderDocument
+	err := g.BindJSON(&orderDocument)
+	if err != nil {
+		g.Error(fmt.Errorf("coudln't parse reader in postOrderHandler: %v", err))
+	}
+
+	fmt.Println(orderDocument)
+	if err := app.updateOrderFromDeliveryPanel(orderDocument); err != nil {
 		g.Error(fmt.Errorf("couldn't update order in updateOrderFromDeliveryPanel: %v", err))
 	}
 }

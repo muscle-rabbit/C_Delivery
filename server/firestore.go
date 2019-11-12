@@ -99,8 +99,8 @@ func (app *app) addUser(profile *linebot.UserProfileResponse) (string, error) {
 	return "", nil
 }
 
-func (app *app) fetchOrders() (OrderList, error) {
-	orderList := make(OrderList)
+func (app *app) fetchOrderDocuments() ([]OrderDocument, error) {
+	var orderDocumens []OrderDocument
 
 	ctx := context.Background()
 	client, err := app.client.Firestore(ctx)
@@ -122,10 +122,10 @@ func (app *app) fetchOrders() (OrderList, error) {
 		if err != nil {
 			return nil, err
 		}
-		orderList[doc.Ref.ID] = order
+		orderDocumens = append(orderDocumens, OrderDocument{ID: doc.Ref.ID, Order: order})
 	}
 
-	return orderList, err
+	return orderDocumens, err
 }
 
 func (app *app) createOrder(userID string) error {
@@ -137,7 +137,7 @@ func (app *app) createOrder(userID string) error {
 		return fmt.Errorf("couldn't create client in addUser: %v", err)
 	}
 
-	ref, _, err := client.Collection("orders").Add(ctx, Order{UserID: userID, CreatedAt: time.Now()})
+	ref, _, err := client.Collection("orders").Add(ctx, Order{UserID: userID, CreatedAt: time.Now(), Finished: false, InProgress: true})
 	if err != nil {
 		return fmt.Errorf("couldn't create document in createOrder: %v", err)
 	}
@@ -188,15 +188,48 @@ func (app *app) updateOrderInChat(userID string, order Order, prevStep int) erro
 	return nil
 }
 
-func (app *app) updateOrderFromDeliveryPanel(documentID string, order Order) error {
-	userSession := app.sessionStore.sessions[order.UserID]
+func (app *app) completeOrderInChat(userID string) error {
+	userSession := app.sessionStore.sessions[userID]
+
+	ctx := context.Background()
+	client, err := app.client.Firestore(ctx)
+	if err != nil {
+		return fmt.Errorf("couldn't create client in completeOrderInChat: %v", err)
+	}
+
+	_, err = client.Collection("orders").Doc(userSession.orderID).Set(ctx, map[string]interface{}{
+		"in_progress": false,
+	}, firestore.MergeAll)
+
+	return err
+}
+
+func (app *app) finishTrade(userID string) error {
+	userSession := app.sessionStore.sessions[userID]
+
+	ctx := context.Background()
+	client, err := app.client.Firestore(ctx)
+	if err != nil {
+		return fmt.Errorf("couldn't create client in finshTrade: %v", err)
+	}
+
+	_, err = client.Collection("orders").Doc(userSession.orderID).Set(ctx, map[string]interface{}{
+		"finished": true,
+	}, firestore.MergeAll)
+
+	return err
+}
+
+func (app *app) updateOrderFromDeliveryPanel(orderDocument OrderDocument) error {
 	ctx := context.Background()
 	client, err := app.client.Firestore(ctx)
 	if err != nil {
 		return fmt.Errorf("couldn't create client in addUser: %v", err)
 	}
 
-	_, err = client.Collection("orders").Doc(userSession.orderID).Set(ctx, order, firestore.MergeAll)
+	_, err = client.Collection("orders").Doc(orderDocument.ID).Set(ctx, map[string]interface{}{
+		"finished": orderDocument.Order.Finished,
+	}, firestore.MergeAll)
 	if err != nil {
 		return fmt.Errorf("couldn't update order in updateOrder: %v", err)
 	}
