@@ -28,19 +28,20 @@ export default {
     }
   },
   methods: {
-    onClickToggleFinishedStatus: function (documentID) {
+    onClickToggleFinishedStatus: function (document_id) {
       let selected = this.orderDocuments.find(orderDocument => {
-        return orderDocument.documentID === documentID
+        return orderDocument.document_id === document_id
       })
-      selected.order.finished = !selected.order.finished
+      console.log('this expected slected document', selected)
+      selected.order.in_trade = !selected.order.in_trade
       if (selected) {
         axios
-          .post(`http://localhost:1964/order`, selected)
+          .post('http://localhost:1964/order', selected)
           .then(function () {
             this.orderDocuments = this.orderDocuments.map(function (
               orderDocument
             ) {
-              if (orderDocument.documentID === documentID) {
+              if (orderDocument.document_id === document_id) {
                 return selected
               }
               return orderDocument
@@ -56,7 +57,9 @@ export default {
     axios
       .get('http://localhost:1964/order_list')
       .then(r => {
+        console.log(r.data)
         this.orderDocuments = r.data
+        console.log('this is documents', this.orderDocuments)
       })
       .catch(e => {
         console.error(e)

@@ -8,11 +8,11 @@
     style="max-width: 20rem;"
     v-if="!(order.in_progress)"
   >
-    <b-card-text class="card-text">注文者: {{order.user_id}}</b-card-text>
+    <b-card-text class="card-text">注文者: {{order.user.display_name}}</b-card-text>
     <b-card-text class="card-text">日程: {{order.date}}</b-card-text>
     <b-card-text class="card-text">時間: {{order.time}}</b-card-text>
     <b-card-text class="card-text">場所: {{order.location}}</b-card-text>
-    <b-card-text class="card-text unfinished" v-if="!(order.finished)">対応未</b-card-text>
+    <b-card-text class="card-text in_trade" v-if="order.in_trade">対応未</b-card-text>
     <b-card-text class="card-text" v-else>対応済</b-card-text>
     <div class="card-button-group">
       <b-button href="#" variant="primary" class="card-button-datail">注文詳細</b-button>
@@ -20,8 +20,8 @@
         href="#"
         variant="primary"
         class="card-button-yet"
-        v-if="!(order.finished)"
         v-on:click="onClick"
+        v-if="order.in_trade"
       >対応済みにする</b-button>
       <b-button
         href="#"
@@ -80,7 +80,7 @@ export default {
 .card-title {
   text-align: left;
 }
-.unfinished {
+.in_trade {
   color: red;
 }
 .card-button-group {

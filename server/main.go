@@ -31,6 +31,7 @@ func main() {
 	r.Static("/static", "../dist/static")   // use the loaded source
 	r.StaticFile("/", "../dist/index.html") // use the loaded sourc
 
+	// dev 用ミドルウェア
 	r.Use(cors.New(cors.Config{
 		AllowOrigins:  []string{"http://localhost:8080"},
 		AllowMethods:  []string{"POST", "OPTIONS", "GET"},
@@ -66,20 +67,20 @@ func (app *app) callbackHandler(g *gin.Context) {
 	for _, event := range events {
 		if event.Type == linebot.EventTypeMessage {
 			p, _ := app.bot.client.GetProfile(event.Source.UserID).Do()
-			userID, err := app.fetchUser(p)
+			user, err := app.fetchUserByLINEProfile(p)
 			if err != nil {
 				log.Fatal(err)
 			}
 
 			switch message := event.Message.(type) {
 			case *linebot.TextMessage:
-				if app.sessionStore.sessions[userID] != nil {
-					if err := app.reply(event, userID); err != nil {
+				if app.sessionStore.sessions[user.UserID] != nil {
+					if err := app.reply(event, user); err != nil {
 						log.Fatal(err)
 					}
 				}
 				if message.Text == "予約開始" {
-					if err := app.reply(event, userID); err != nil {
+					if err := app.reply(event, user); err != nil {
 						log.Fatal(err)
 					}
 				}

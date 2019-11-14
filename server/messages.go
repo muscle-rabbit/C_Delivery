@@ -48,7 +48,7 @@ func (m Menu) searchItemNameByID(id string) string {
 var wdays = [...]string{"日", "月", "火", "水", "木", "金", "土"}
 
 type Order struct {
-	UserID     string    `firestore:"user_id,omitempty" json:"user_id"`
+	User       User      `firestore:"uesr,omitempty" json:"user"`
 	Date       string    `firestore:"date,omitempty" json:"date"`
 	Time       string    `firestore:"time,omitempty" json:"time"`
 	Location   string    `firestore:"location,omitempty" json:"location"`
@@ -148,11 +148,20 @@ func makeMenuTextMessage() *linebot.TextMessage {
 }
 
 // makeMenu は 商品指定用の写真付きカルーセルを返すメソッドです。
-func (app *app) makeMenuMessage() *linebot.FlexMessage {
+func (app *app) makeMenuMessage() (*linebot.FlexMessage, error) {
 	var containers []*linebot.BubbleContainer
 	containers = append(containers, makeDecideButton())
+
+	stockDocs, err := app.fetchStocks()
+	if err != nil {
+		return nil, err
+	}
 	for _, item := range app.service.menu {
-		containers = append(containers, makeMenuCard(item))
+		stock, err := stockDocs.searchDocByProductID(item.ID)
+		if err != nil {
+			return nil, err
+		}
+		containers = append(containers, makeMenuCard(item, stock.Stock))
 	}
 	carousel := &linebot.CarouselContainer{
 		Type:     linebot.FlexContainerTypeCarousel,
@@ -160,7 +169,7 @@ func (app *app) makeMenuMessage() *linebot.FlexMessage {
 	}
 
 	message := linebot.NewFlexMessage("Menu List", carousel)
-	return message
+	return message, nil
 }
 
 func (app *app) makeHalfConfirmation(userID string) (*linebot.TextMessage, error) {
@@ -236,7 +245,7 @@ func makeSorryMessage(cause string) *linebot.TextMessage {
 	return linebot.NewTextMessage(message)
 }
 
-func makeMenuCard(item Item) *linebot.BubbleContainer {
+func makeMenuCard(item Item, stock int) *linebot.BubbleContainer {
 	return &linebot.BubbleContainer{
 		Type: "bubble",
 		Hero: &linebot.ImageComponent{
@@ -258,7 +267,7 @@ func makeMenuCard(item Item) *linebot.BubbleContainer {
 					Contents: []linebot.FlexComponent{
 						&linebot.TextComponent{
 							Type:  linebot.FlexComponentTypeText,
-							Text:  "Name",
+							Text:  "商品名",
 							Color: "#aaaaaa",
 							Size:  linebot.FlexTextSizeTypeSm,
 							Flex:  linebot.IntPtr(1),
@@ -274,12 +283,12 @@ func makeMenuCard(item Item) *linebot.BubbleContainer {
 				},
 				&linebot.BoxComponent{
 					Type:    linebot.FlexComponentTypeBox,
-					Layout:  linebot.FlexBoxLayoutTypeVertical,
+					Layout:  linebot.FlexBoxLayoutTypeBaseline,
 					Spacing: linebot.FlexComponentSpacingTypeSm,
 					Contents: []linebot.FlexComponent{
 						&linebot.TextComponent{
 							Type:  linebot.FlexComponentTypeText,
-							Text:  "Price",
+							Text:  "値段",
 							Color: "#aaaaaa",
 							Size:  linebot.FlexTextSizeTypeSm,
 							Flex:  linebot.IntPtr(1),
@@ -287,6 +296,27 @@ func makeMenuCard(item Item) *linebot.BubbleContainer {
 						&linebot.TextComponent{
 							Type:   linebot.FlexComponentTypeText,
 							Text:   "¥" + strconv.Itoa(item.Price),
+							Weight: linebot.FlexTextWeightTypeBold,
+							Size:   linebot.FlexTextSizeTypeMd,
+							Flex:   linebot.IntPtr(5),
+						},
+					},
+				},
+				&linebot.BoxComponent{
+					Type:    linebot.FlexComponentTypeBox,
+					Layout:  linebot.FlexBoxLayoutTypeBaseline,
+					Spacing: linebot.FlexComponentSpacingTypeSm,
+					Contents: []linebot.FlexComponent{
+						&linebot.TextComponent{
+							Type:  linebot.FlexComponentTypeText,
+							Text:  "在庫",
+							Color: "#aaaaaa",
+							Size:  linebot.FlexTextSizeTypeSm,
+							Flex:  linebot.IntPtr(1),
+						},
+						&linebot.TextComponent{
+							Type:   linebot.FlexComponentTypeText,
+							Text:   strconv.Itoa(stock) + "個",
 							Weight: linebot.FlexTextWeightTypeBold,
 							Size:   linebot.FlexTextSizeTypeMd,
 							Flex:   linebot.IntPtr(5),

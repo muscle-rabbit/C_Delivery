@@ -18,20 +18,20 @@ const (
 	end
 )
 
-func (app *app) reply(event *linebot.Event, userID string) *appError {
-	session := app.sessionStore.searchSession(userID)
+func (app *app) reply(event *linebot.Event, user User) *appError {
+	session := app.sessionStore.searchSession(user.UserID)
 	if session == nil {
-		session = app.sessionStore.createSession(userID)
-		err := app.createOrder(userID)
-		// session.orderID = "4KjVlBdMrY61z_QhPe1q9vpwPNYkJ6rfYxh0XaEkllQ"
+		session = app.sessionStore.createSession(user.UserID)
+		// err := app.createOrder(user)
+		session.orderID = "4KjVlBdMrY61z_QhPe1q9vpwPNYkJ6rfYxh0XaEkllQ"
 
-		if err != nil {
-			return appErrorf(err, "couldn't create order doc")
-		}
+		// if err != nil {
+		// 	return appErrorf(err, "couldn't create order doc")
+		// }
 	}
 
-	if !app.sessionStore.checkSessionLifespan(userID) {
-		err := app.replySorry(event, userID, "一回の注文にかけられる時間（10分）の上限に達したため")
+	if !app.sessionStore.checkSessionLifespan(user.UserID) {
+		err := app.replySorry(event, user.UserID, "一回の注文にかけられる時間（10分）の上限に達したため")
 		if err != nil {
 			return appErrorf(err, "couldn't reply sorry")
 		}
@@ -41,31 +41,31 @@ func (app *app) reply(event *linebot.Event, userID string) *appError {
 
 	switch session.prevStep {
 	case begin:
-		if err := app.replyReservationDate(event, userID); err != nil {
+		if err := app.replyReservationDate(event, user.UserID); err != nil {
 			return appErrorf(err, "couldn't reply ReservationDate: %v", err)
 		}
 	case reservateDate:
-		if err := app.replyReservationTime(event, userID); err != nil {
+		if err := app.replyReservationTime(event, user.UserID); err != nil {
 			return appErrorf(err, "couldn't reply ReservationTime")
 		}
 	case reservateTime:
-		if err := app.replyMenu(event, userID); err != nil {
+		if err := app.replyMenu(event, user.UserID); err != nil {
 			return appErrorf(err, "couldn't reply Menu")
 		}
 	case setMenu:
-		if err := app.replyHalfConfirmation(event, userID); err != nil {
+		if err := app.replyHalfConfirmation(event, user.UserID); err != nil {
 			return appErrorf(err, "couldn't reply location")
 		}
 	case setLocation:
-		if err := app.replyConfirmation(event, userID); err != nil {
+		if err := app.replyConfirmation(event, user.UserID); err != nil {
 			return appErrorf(err, "couldn't reply confirmation")
 		}
 	case confirm, end:
-		if err := app.replyFinalMessage(event, userID); err != nil {
+		if err := app.replyFinalMessage(event, user.UserID); err != nil {
 			return appErrorf(err, "couldn't reply thankyou")
 		}
 	default:
-		if err := app.replySorry(event, userID, "注文内容に誤りがあった"); err != nil {
+		if err := app.replySorry(event, user.UserID, "注文内容に誤りがあった"); err != nil {
 			return appErrorf(err, "couldn't reply sorry")
 		}
 	}
@@ -108,7 +108,11 @@ func (app *app) replyMenu(event *linebot.Event, userID string) error {
 		if isTimeMessage(message.Text) {
 			// メニューカルセールを返す。
 			app.updateOrderInChat(userID, Order{Time: message.Text})
-			if _, err := app.bot.client.ReplyMessage(event.ReplyToken, makeMenuTextMessage(), app.makeMenuMessage()).Do(); err != nil {
+			message, err := app.makeMenuMessage()
+			if err != nil {
+				return err
+			}
+			if _, err := app.bot.client.ReplyMessage(event.ReplyToken, makeMenuTextMessage(), message).Do(); err != nil {
 				return err
 			}
 		} else if message.Text == "注文決定" {

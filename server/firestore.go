@@ -16,9 +16,9 @@ import (
 
 // User represents a profile
 type User struct {
-	UserID      string    `firestore:"user_id,omitempty"`
-	DisplayName string    `firestore:"display_name,omitempty"`
-	CreatedAt   time.Time `firestore:"created_at,omitempty"`
+	UserID      string    `firestore:"user_id,omitempty" json:"user_id"`
+	DisplayName string    `firestore:"display_name,omitempty" json:"display_name"`
+	CreatedAt   time.Time `firestore:"created_at,omitempty" json:"-"`
 }
 
 type StockDocuments map[string]Stock
@@ -94,25 +94,52 @@ func newApp() (*app, error) {
 
 }
 
-func (app *app) addUser(profile *linebot.UserProfileResponse) (string, error) {
+func (app *app) addUser(profile *linebot.UserProfileResponse) (User, error) {
 	ctx := context.Background()
 	client, err := app.client.Firestore(ctx)
 	if err != nil {
-		return "", fmt.Errorf("couldn't create client in addUser: %v", err)
+		return User{}, fmt.Errorf("couldn't create client in addUser: %v", err)
 	}
 
 	ref, _, err := client.Collection("users").Add(ctx, User{UserID: profile.UserID, DisplayName: profile.DisplayName, CreatedAt: time.Now()})
 	if err != nil {
-		return "", fmt.Errorf("couldn't find user document ref: %v", err)
+		return User{}, fmt.Errorf("couldn't find user document ref: %v", err)
 	}
-	return ref.ID, nil
+
+	user, err := app.fetchUserByDocID(ref.ID)
+	if err != nil {
+		return User{}, err
+	}
+
+	return user, nil
 }
 
-func (app *app) fetchUser(profile *linebot.UserProfileResponse) (string, error) {
+func (app *app) fetchUserByDocID(docID string) (User, error) {
 	ctx := context.Background()
 	client, err := app.client.Firestore(ctx)
 	if err != nil {
-		return "", fmt.Errorf("couldn't create client in addUser: %v", err)
+		return User{}, fmt.Errorf("couldn't create client in fetchUser: %v", err)
+	}
+
+	var user User
+
+	doc, err := client.Collection("users").Doc(docID).Get(ctx)
+	if err != nil {
+		return User{}, fmt.Errorf("couldn't find user document ref: %v", err)
+	}
+
+	if err := doc.DataTo(&user); err != nil {
+		return User{}, err
+	}
+
+	return user, nil
+}
+
+func (app *app) fetchUserByLINEProfile(profile *linebot.UserProfileResponse) (User, error) {
+	ctx := context.Background()
+	client, err := app.client.Firestore(ctx)
+	if err != nil {
+		return User{}, fmt.Errorf("couldn't create client in addUser: %v", err)
 	}
 
 	iter := client.Collection("users").Where("user_id", "==", profile.UserID).Documents(ctx)
@@ -121,21 +148,25 @@ func (app *app) fetchUser(profile *linebot.UserProfileResponse) (string, error) 
 		if err == iterator.Done {
 			if doc == nil {
 				// user がいなければ作成。
-				docID, err := app.addUser(profile)
+				user, err := app.addUser(profile)
 				if err != nil {
-					return "", err
+					return User{}, err
 				}
-				return docID, nil
+				return user, nil
 			}
 			break
 		}
 		if err != nil {
-			return "", err
+			return User{}, err
 		}
-		return doc.Ref.ID, nil
+		user, err := app.fetchUserByDocID(doc.Ref.ID)
+		if err != nil {
+			return User{}, err
+		}
+		return user, nil
 	}
 
-	return "", nil
+	return User{}, nil
 }
 
 func (app *app) fetchOrderDocuments() ([]OrderDocument, error) {
@@ -167,8 +198,8 @@ func (app *app) fetchOrderDocuments() ([]OrderDocument, error) {
 	return orderDocumens, err
 }
 
-func (app *app) createOrder(userID string) error {
-	userSession := app.sessionStore.sessions[userID]
+func (app *app) createOrder(user User) error {
+	userSession := app.sessionStore.sessions[user.UserID]
 
 	ctx := context.Background()
 	client, err := app.client.Firestore(ctx)
@@ -176,7 +207,7 @@ func (app *app) createOrder(userID string) error {
 		return fmt.Errorf("couldn't create client in createOrder: %v", err)
 	}
 
-	ref, _, err := client.Collection("orders").Add(ctx, Order{UserID: userID, CreatedAt: time.Now(), InTrade: true, InProgress: true})
+	ref, _, err := client.Collection("orders").Add(ctx, Order{User: user, CreatedAt: time.Now(), InTrade: true, InProgress: true})
 	if err != nil {
 		return fmt.Errorf("couldn't create document in createOrder: %v", err)
 	}
