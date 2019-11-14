@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"time"
 
@@ -58,15 +59,28 @@ type detailTime struct {
 }
 
 // map[{products Document の ID}] 個数
-type Products map[string]int
+// type sessionOrderedProducts map[string]int
+
+// map[{products Document の ID}] 製品情報
+type Products map[string]*Product
+
+type Product struct {
+	Name     string `firestore:"name,omitempty"`
+	Stock    int    `firestore:"stock,omitempty"`
+	Reserved bool   `firestore:"reserved,omitempty"`
+}
 
 func (ss *sessionStore) createSession(userID string) *userSession {
 	ss.sessions[userID] = &userSession{prevStep: begin, createdAt: time.Now(), products: make(Products)}
 	return ss.sessions[userID]
 }
 
-func (ss *sessionStore) deleteUserSession(userID string) {
+func (ss *sessionStore) deleteUserSession(userID string) error {
+	if ss.sessions[userID] == nil {
+		return fmt.Errorf("User doesn't exist in session Store: ID. %v", userID)
+	}
 	delete(ss.sessions, userID)
+	return nil
 }
 
 func (ss *sessionStore) checkSessionLifespan(userID string) (ok bool) {

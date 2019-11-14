@@ -21,6 +21,31 @@ type User struct {
 	CreatedAt   time.Time `firestore:"created_at,omitempty"`
 }
 
+type StockDocuments map[string]Stock
+
+type Stock struct {
+	ProductID string `firestore:"product_id,omitempty"`
+	Stock     int    `firestore:"stock,omitempty"`
+}
+
+func (sd StockDocuments) searchDocByProductID(productID string) (Stock, error) {
+	for docID, stock := range sd {
+		if stock.ProductID == productID {
+			return sd[docID], nil
+		}
+	}
+	return Stock{}, fmt.Errorf("couldn't find stock doc by: %s", productID)
+}
+
+func (sd StockDocuments) searchDocIDByProductID(productID string) (string, error) {
+	for docID, stock := range sd {
+		if stock.ProductID == productID {
+			return docID, nil
+		}
+	}
+	return "", fmt.Errorf("couldn't find stock doc by: %s", productID)
+}
+
 func newApp() (*app, error) {
 	err := godotenv.Load()
 	if err != nil {
@@ -57,7 +82,7 @@ func newApp() (*app, error) {
 	}
 	app.service.locations = locations
 
-	//
+	// サービス時間に関わる情報を取得。
 	app.service.businessHours = businessHours{today: parseTime(time.Now()), begin: detailTime{12, 00}, end: detailTime{15, 00}, interval: 30, lastorder: "12:30"}
 
 	// linebot の初期化
@@ -76,17 +101,31 @@ func (app *app) addUser(profile *linebot.UserProfileResponse) (string, error) {
 		return "", fmt.Errorf("couldn't create client in addUser: %v", err)
 	}
 
-	// user がすでに登録されていたら nil を返す。
+	ref, _, err := client.Collection("users").Add(ctx, User{UserID: profile.UserID, DisplayName: profile.DisplayName, CreatedAt: time.Now()})
+	if err != nil {
+		return "", fmt.Errorf("couldn't find user document ref: %v", err)
+	}
+	return ref.ID, nil
+}
+
+func (app *app) fetchUser(profile *linebot.UserProfileResponse) (string, error) {
+	ctx := context.Background()
+	client, err := app.client.Firestore(ctx)
+	if err != nil {
+		return "", fmt.Errorf("couldn't create client in addUser: %v", err)
+	}
+
 	iter := client.Collection("users").Where("user_id", "==", profile.UserID).Documents(ctx)
 	for {
 		doc, err := iter.Next()
 		if err == iterator.Done {
 			if doc == nil {
-				ref, _, err := client.Collection("users").Add(ctx, User{UserID: profile.UserID, DisplayName: profile.DisplayName, CreatedAt: time.Now()})
+				// user がいなければ作成。
+				docID, err := app.addUser(profile)
 				if err != nil {
-					return "", fmt.Errorf("couldn't find user document ref: %v", err)
+					return "", err
 				}
-				return ref.ID, nil
+				return docID, nil
 			}
 			break
 		}
@@ -134,10 +173,10 @@ func (app *app) createOrder(userID string) error {
 	ctx := context.Background()
 	client, err := app.client.Firestore(ctx)
 	if err != nil {
-		return fmt.Errorf("couldn't create client in addUser: %v", err)
+		return fmt.Errorf("couldn't create client in createOrder: %v", err)
 	}
 
-	ref, _, err := client.Collection("orders").Add(ctx, Order{UserID: userID, CreatedAt: time.Now(), Finished: false, InProgress: true})
+	ref, _, err := client.Collection("orders").Add(ctx, Order{UserID: userID, CreatedAt: time.Now(), InTrade: true, InProgress: true})
 	if err != nil {
 		return fmt.Errorf("couldn't create document in createOrder: %v", err)
 	}
@@ -147,44 +186,36 @@ func (app *app) createOrder(userID string) error {
 	return nil
 }
 
-func (app *app) updateOrderInChat(userID string, order Order, prevStep int) error {
+func (app *app) updateOrderInChat(userID string, order Order) error {
 	userSession := app.sessionStore.sessions[userID]
+	prevStep := userSession.prevStep
 
 	ctx := context.Background()
 	client, err := app.client.Firestore(ctx)
 	if err != nil {
-		return fmt.Errorf("couldn't create client in addUser: %v", err)
+		return fmt.Errorf("couldn't create client in updateOrderInChat: %v", err)
 	}
+
+	var willUpdated string
 
 	switch prevStep {
 	case reservateDate:
-		_, err = client.Collection("orders").Doc(userSession.orderID).Set(ctx, map[string]interface{}{
-			"date": order.Date,
-		}, firestore.MergeAll)
-		if err != nil {
-			return fmt.Errorf("couldn't update order in updateOrder: %v", err)
-		}
+		willUpdated = "date"
 	case reservateTime:
 		if isTimeMessage(order.Time) {
-			_, err = client.Collection("orders").Doc(userSession.orderID).Set(ctx, map[string]interface{}{
-				"time": order.Time,
-			}, firestore.MergeAll)
-			if err != nil {
-				return fmt.Errorf("couldn't update order in updateOrder: %v", err)
-			}
+			willUpdated = "time"
 		} else {
-			_, err = client.Collection("orders").Doc(userSession.orderID).Set(ctx, map[string]interface{}{
-				"products": order.Products,
-			}, firestore.MergeAll)
-			if err != nil {
-				return fmt.Errorf("couldn't update order in updateOrder: %v", err)
-			}
+			willUpdated = "products"
 		}
 	case setLocation:
-		_, err = client.Collection("orders").Doc(userSession.orderID).Set(ctx, map[string]interface{}{
-			"location": order.Location,
-		}, firestore.MergeAll)
+		willUpdated = "location"
 	}
+
+	_, err = client.Collection("orders").Doc(userSession.orderID).Set(ctx, order, firestore.Merge([]string{willUpdated}))
+	if err != nil {
+		return fmt.Errorf("couldn't update order in updateOrderInChat: %v", err)
+	}
+
 	return nil
 }
 
@@ -197,44 +228,20 @@ func (app *app) completeOrderInChat(userID string) error {
 		return fmt.Errorf("couldn't create client in completeOrderInChat: %v", err)
 	}
 
-	_, err = client.Collection("orders").Doc(userSession.orderID).Set(ctx, map[string]interface{}{
-		"in_progress": false,
-	}, firestore.MergeAll)
-
+	_, err = client.Collection("orders").Doc(userSession.orderID).Set(ctx, Order{InProgress: false}, firestore.Merge([]string{"in_progress"}))
 	return err
 }
 
-func (app *app) finishTrade(userID string) error {
-	userSession := app.sessionStore.sessions[userID]
-
+func (app *app) toggleOrderFinishedStatus(orderDocument OrderDocument) error {
 	ctx := context.Background()
 	client, err := app.client.Firestore(ctx)
 	if err != nil {
 		return fmt.Errorf("couldn't create client in finshTrade: %v", err)
 	}
 
-	_, err = client.Collection("orders").Doc(userSession.orderID).Set(ctx, map[string]interface{}{
-		"finished": true,
-	}, firestore.MergeAll)
+	_, err = client.Collection("orders").Doc(orderDocument.ID).Set(ctx, Order{InTrade: orderDocument.Order.InTrade}, firestore.Merge([]string{"in_trade"}))
 
 	return err
-}
-
-func (app *app) updateOrderFromDeliveryPanel(orderDocument OrderDocument) error {
-	ctx := context.Background()
-	client, err := app.client.Firestore(ctx)
-	if err != nil {
-		return fmt.Errorf("couldn't create client in addUser: %v", err)
-	}
-
-	_, err = client.Collection("orders").Doc(orderDocument.ID).Set(ctx, map[string]interface{}{
-		"finished": orderDocument.Order.Finished,
-	}, firestore.MergeAll)
-	if err != nil {
-		return fmt.Errorf("couldn't update order in updateOrder: %v", err)
-	}
-
-	return nil
 }
 
 func (app *app) deleteOrder(userID string) error {
@@ -276,41 +283,100 @@ func (app *app) fetchUserOrder(userID string) (Order, error) {
 	return order, nil
 }
 
-func (app *app) reserve(userID string, products Products) error {
+func (app *app) reserveProducts(userID string) error {
+	userSession := app.sessionStore.sessions[userID]
+
 	ctx := context.Background()
 	client, err := app.client.Firestore(ctx)
 	if err != nil {
 		return fmt.Errorf("couldn't create client in reserveProduct: %v", err)
 	}
 
-	batch := client.Batch()
+	stockDocs, err := app.fetchStocks()
+	if err != nil {
+		return err
+	}
 
-	for id, n := range products {
-		var stocks Products
-		iter := client.Collection("stocks").Where("product_id", "==", id).Documents(ctx)
-		if err != nil {
-			return fmt.Errorf("couldn't fetch Product in reserve: %v", err)
+	for id, product := range userSession.products {
+		if product.Reserved {
+			continue
 		}
-
-		for {
-			doc, err := iter.Next()
-			if err == iterator.Done {
-				break
-			}
+		stock, err := stockDocs.searchDocByProductID(id)
+		if err != nil {
+			return err
+		}
+		if stock.Stock >= product.Stock {
+			stock.Stock -= product.Stock
+			docID, err := stockDocs.searchDocIDByProductID(id)
 			if err != nil {
 				return err
 			}
-			doc.DataTo(stocks)
-			if n >= stocks[id] {
-				batch.Set(doc.Ref, stocks[id]-n)
+			if _, err := client.Collection("stocks").Doc(docID).Set(ctx, stock); err != nil {
+				return err
 			}
+			userSession.products[id].Reserved = true
 		}
 	}
 
-	if _, err = batch.Commit(ctx); err != nil {
-		return fmt.Errorf("couldn't commit batch in reserve: %v", err)
+	return nil
+}
+
+func (app *app) restoreStocks(userID string) error {
+	userSession := app.sessionStore.sessions[userID]
+
+	ctx := context.Background()
+	client, err := app.client.Firestore(ctx)
+	if err != nil {
+		return fmt.Errorf("couldn't create client in restoreStock: %v", err)
 	}
-	return err
+
+	stockDocs, err := app.fetchStocks()
+	if err != nil {
+		return err
+	}
+
+	for id, product := range userSession.products {
+		stock, err := stockDocs.searchDocByProductID(id)
+		if err != nil {
+			return err
+		}
+		stock.Stock += product.Stock
+		docID, err := stockDocs.searchDocIDByProductID(id)
+		if err != nil {
+			return err
+		}
+		if _, err := client.Collection("stocks").Doc(docID).Set(ctx, stock); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (app *app) fetchStocks() (StockDocuments, error) {
+	stockDocs := make(StockDocuments)
+	ctx := context.Background()
+	client, err := app.client.Firestore(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("couldn't create client in fetchStocks: %v", err)
+	}
+
+	iter := client.Collection("stocks").Documents(ctx)
+	for {
+		doc, err := iter.Next()
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		var stock Stock
+		if err := doc.DataTo(&stock); err != nil {
+			return nil, err
+		}
+		stockDocs[doc.Ref.ID] = stock
+	}
+	return stockDocs, nil
 }
 
 func (app *app) fetchProduct(productID string) (Item, error) {
@@ -386,6 +452,19 @@ func (app *app) getLocations() ([]Location, error) {
 	}
 
 	return locations, nil
+}
+
+func (app *app) cancelOrder(userID string) error {
+	if err := app.deleteOrder(userID); err != nil {
+		return err
+	}
+	if err := app.restoreStocks(userID); err != nil {
+		return err
+	}
+	if err := app.sessionStore.deleteUserSession(userID); err != nil {
+		return err
+	}
+	return nil
 }
 
 func parseTime(time time.Time) string {

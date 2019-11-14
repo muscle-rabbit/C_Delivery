@@ -23,6 +23,7 @@ func (app *app) reply(event *linebot.Event, userID string) *appError {
 	if session == nil {
 		session = app.sessionStore.createSession(userID)
 		err := app.createOrder(userID)
+		// session.orderID = "4KjVlBdMrY61z_QhPe1q9vpwPNYkJ6rfYxh0XaEkllQ"
 
 		if err != nil {
 			return appErrorf(err, "couldn't create order doc")
@@ -86,52 +87,52 @@ func (app *app) replyReservationTime(event *linebot.Event, userID string) error 
 	// TODO: 冗長なのでリファクタ必要。event.Message.Text みたいな使い方したい。
 	switch message := event.Message.(type) {
 	case *linebot.TextMessage:
-		if err := app.updateOrderInChat(userID, Order{
-			Date: message.Text,
-		}, session.prevStep); err != nil {
+		if err := app.updateOrderInChat(userID, Order{Date: message.Text}); err != nil {
 			return err
 		}
 	}
 
 	session.prevStep = reservateTime
-	bh := app.service.businessHours
 
-	if _, err := app.bot.client.ReplyMessage(event.ReplyToken, makeReservationTimeMessage(bh.makeTimeTable(), bh.lastorder)).Do(); err != nil {
+	if _, err := app.bot.client.ReplyMessage(event.ReplyToken, app.makeReservationTimeMessage()).Do(); err != nil {
 		return err
 	}
 	return nil
 }
 func (app *app) replyMenu(event *linebot.Event, userID string) error {
-	session := app.sessionStore.searchSession(userID)
+	userSession := app.sessionStore.searchSession(userID)
 
 	// TODO: 冗長なのでリファクタ必要。event.Message.Text みたいな使い方したい。
 	switch message := event.Message.(type) {
 	case *linebot.TextMessage:
 		if isTimeMessage(message.Text) {
 			// メニューカルセールを返す。
-			app.updateOrderInChat(userID, Order{Time: message.Text}, session.prevStep)
-			if _, err := app.bot.client.ReplyMessage(event.ReplyToken, makeMenuTextMessage(), makeMenuMessage(app.service.menu)).Do(); err != nil {
+			app.updateOrderInChat(userID, Order{Time: message.Text})
+			if _, err := app.bot.client.ReplyMessage(event.ReplyToken, makeMenuTextMessage(), app.makeMenuMessage()).Do(); err != nil {
 				return err
 			}
 		} else if message.Text == "注文決定" {
 			// 次のステップに移る。
-			session.prevStep = setMenu
-			price := app.service.menu.calcPrice(session.products)
-
-			order, err := app.fetchUserOrder(userID)
+			userSession.prevStep = setMenu
+			message, err := app.makeHalfConfirmation(userID)
 			if err != nil {
 				return err
 			}
 
-			if _, err := app.bot.client.ReplyMessage(event.ReplyToken, makeHalfConfirmation(session.products, app.service.menu, order, price), makeConfirmationButtonMessage()).Do(); err != nil {
+			if _, err := app.bot.client.ReplyMessage(event.ReplyToken, message, makeConfirmationButtonMessage()).Do(); err != nil {
 				return err
 			}
 		} else {
 			// 注文メッセージを待ち受ける。 expeted: {商品名} × n
-			if err := session.products.parseProductsText(message.Text, app.service.menu); err != nil {
+			if err := userSession.products.parseMessageToProductText(message.Text, app.service.menu); err != nil {
 				return err
 			}
-			app.updateOrderInChat(userID, Order{Products: session.products}, session.prevStep)
+			if err := app.reserveProducts(userID); err != nil {
+				return err
+			}
+			if err := app.updateOrderInChat(userID, Order{Products: userSession.products}); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -161,30 +162,30 @@ func (app *app) replyLocation(event *linebot.Event, userID string) error {
 
 	session.prevStep = setLocation
 
-	if _, err := app.bot.client.ReplyMessage(event.ReplyToken, makeLocationMessage(app.service.locations)).Do(); err != nil {
+	if _, err := app.bot.client.ReplyMessage(event.ReplyToken, app.makeLocationMessage()).Do(); err != nil {
 		return err
 	}
 	return nil
 }
 func (app *app) replyConfirmation(event *linebot.Event, userID string) error {
-	session := app.sessionStore.searchSession(userID)
+	userSession := app.sessionStore.searchSession(userID)
 
 	// 一つ前のステップで取得した値をセットする。
 	// TODO: 冗長なのでリファクタ必要。event.Message.Text みたいな使い方したい。
 	switch message := event.Message.(type) {
 	case *linebot.TextMessage:
-		if err := app.updateOrderInChat(userID, Order{Location: message.Text}, session.prevStep); err != nil {
+		if err := app.updateOrderInChat(userID, Order{Location: message.Text}); err != nil {
 			return err
 		}
 	}
-	session.prevStep = confirm
+	userSession.prevStep = confirm
 
-	price := app.service.menu.calcPrice(session.products)
-	order, err := app.fetchUserOrder(userID)
+	message, err := app.makeConfirmationTextMessage(userID)
 	if err != nil {
 		return err
 	}
-	if _, err := app.bot.client.ReplyMessage(event.ReplyToken, makeConfirmationTextMessage(session.products, app.service.menu, order, price), makeConfirmationButtonMessage()).Do(); err != nil {
+
+	if _, err := app.bot.client.ReplyMessage(event.ReplyToken, message, makeConfirmationButtonMessage()).Do(); err != nil {
 		return err
 	}
 	return nil
@@ -213,7 +214,9 @@ func (app *app) replyThankYou(event *linebot.Event, userID string) error {
 		return err
 	}
 
-	app.sessionStore.deleteUserSession(userID)
+	if err := app.sessionStore.deleteUserSession(userID); err != nil {
+		return err
+	}
 
 	if _, err := app.bot.client.ReplyMessage(event.ReplyToken, makeThankYouMessage()).Do(); err != nil {
 		return err
@@ -226,10 +229,10 @@ func (app *app) replySorry(event *linebot.Event, userID string, cause string) er
 		return err
 	}
 
-	if err := app.deleteOrder(userID); err != nil {
+	if err := app.cancelOrder(userID); err != nil {
 		return err
 	}
-	app.sessionStore.deleteUserSession(userID)
+
 	return nil
 }
 
@@ -238,13 +241,19 @@ func isTimeMessage(text string) bool {
 	return strings.Contains(text, timeFormat)
 }
 
-func (products Products) parseProductsText(text string, menu Menu) error {
+func (products Products) parseMessageToProductText(text string, menu Menu) error {
 	i := strings.Index(text, "x")
-	d, err := strconv.Atoi(string(text[i+1:]))
+	n, err := strconv.Atoi(string(text[i+1:]))
 	if err != nil {
 		return fmt.Errorf("couldn't convert string to int: %v", err)
 	}
-
-	products[menu.searchItemIDByName(string(text[:i]))] = d
+	id := menu.searchItemIDByName(string(text[:i]))
+	if products[id] != nil {
+		product := Product{Name: menu.searchItemNameByID(id), Stock: products[id].Stock + n, Reserved: false}
+		products[id] = &product
+		return nil
+	}
+	product := Product{Name: menu.searchItemNameByID(id), Stock: n, Reserved: false}
+	products[id] = &product
 	return nil
 }

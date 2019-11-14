@@ -66,15 +66,20 @@ func (app *app) callbackHandler(g *gin.Context) {
 	for _, event := range events {
 		if event.Type == linebot.EventTypeMessage {
 			p, _ := app.bot.client.GetProfile(event.Source.UserID).Do()
-			docID, err := app.addUser(p)
+			userID, err := app.fetchUser(p)
 			if err != nil {
 				log.Fatal(err)
 			}
 
 			switch message := event.Message.(type) {
 			case *linebot.TextMessage:
+				if app.sessionStore.sessions[userID] != nil {
+					if err := app.reply(event, userID); err != nil {
+						log.Fatal(err)
+					}
+				}
 				if message.Text == "予約開始" {
-					if err := app.reply(event, docID); err != nil {
+					if err := app.reply(event, userID); err != nil {
 						log.Fatal(err)
 					}
 				}
@@ -100,8 +105,7 @@ func (app *app) postOrderHandler(g *gin.Context) {
 		g.Error(fmt.Errorf("coudln't parse reader in postOrderHandler: %v", err))
 	}
 
-	fmt.Println(orderDocument)
-	if err := app.updateOrderFromDeliveryPanel(orderDocument); err != nil {
+	if err := app.toggleOrderFinishedStatus(orderDocument); err != nil {
 		g.Error(fmt.Errorf("couldn't update order in updateOrderFromDeliveryPanel: %v", err))
 	}
 }
