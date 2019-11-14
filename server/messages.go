@@ -48,13 +48,23 @@ func (m Menu) searchItemNameByID(id string) string {
 var wdays = [...]string{"日", "月", "火", "水", "木", "金", "土"}
 
 type Order struct {
-	UserID    string    `firestore:"user_id,omitempty"`
-	Date      string    `firestore:"date,omitempty"`
-	Time      string    `firestore:"time,omitempty"`
-	Location  string    `firestore:"location,omitempty"`
-	Products  Products  `firestore:"products,omitempty"`
-	CreatedAt time.Time `firestore:"created_at,omitempty"`
-	UpdatedAt time.Time `firestore:"updated_at,omitempty"`
+	UserID     string    `firestore:"user_id,omitempty" json:"user_id"`
+	Date       string    `firestore:"date,omitempty" json:"date"`
+	Time       string    `firestore:"time,omitempty" json:"time"`
+	Location   string    `firestore:"location,omitempty" json:"location"`
+	Products   Products  `firestore:"products,omitempty" json:"products"`
+	TotalPrice int       `firestore:"total_price,omitempty" json:"total_price"`
+	InTrade    bool      `firestore:"in_trade,omitempty" json:"in_trade"`
+	InProgress bool      `firestore:"in_progress,omitempty" json:"in_progress"`
+	CreatedAt  time.Time `firestore:"created_at,omitempty" json:"created_at"`
+	UpdatedAt  time.Time `firestore:"updated_at,omitempty" json:"updated_at"`
+}
+
+// type OrderList map[string]Order
+
+type OrderDocument struct {
+	ID    string `firestore:"document_id,omitempty" json:"document_id"`
+	Order Order  `firestore:"order,omitempty" json:"order"`
 }
 
 func (bh businessHours) makeTimeTable() []string {
@@ -104,9 +114,10 @@ func makeReservationDateMessage() *linebot.TemplateMessage {
 }
 
 // makeReservationTimeMessage は 注文時間指定用のメッセージを返すメソッドです。
-func makeReservationTimeMessage(timeTable []string, lastorder string) *linebot.TemplateMessage {
+func (app *app) makeReservationTimeMessage() *linebot.TemplateMessage {
 	title := "時間指定"
-	phrase := "ご注文時間をお選びください。\nラストオーダー: " + lastorder
+	phrase := "ご注文時間をお選びください。\nラストオーダー: " + app.service.businessHours.lastorder
+	timeTable := app.service.businessHours.makeTimeTable()
 
 	template := linebot.NewButtonsTemplate(
 		"", title, phrase,
@@ -122,7 +133,8 @@ func makeReservationTimeMessage(timeTable []string, lastorder string) *linebot.T
 }
 
 // linebot.NewMessageAction("", title, phrase, ...actions) みたいに使いけどできない。
-func makeTimeTableMessageAction(timeTable []string) []*linebot.MessageAction {
+func (app *app) makeTimeTableMessageAction() []*linebot.MessageAction {
+	timeTable := app.service.businessHours.makeTimeTable()
 	actions := make([]*linebot.MessageAction, len(timeTable))
 	for i, time := range timeTable {
 		actions[i] = linebot.NewMessageAction(time, time)
@@ -136,11 +148,10 @@ func makeMenuTextMessage() *linebot.TextMessage {
 }
 
 // makeMenu は 商品指定用の写真付きカルーセルを返すメソッドです。
-
-func makeMenuMessage(menu Menu) *linebot.FlexMessage {
+func (app *app) makeMenuMessage() *linebot.FlexMessage {
 	var containers []*linebot.BubbleContainer
 	containers = append(containers, makeDecideButton())
-	for _, item := range menu {
+	for _, item := range app.service.menu {
 		containers = append(containers, makeMenuCard(item))
 	}
 	carousel := &linebot.CarouselContainer{
@@ -152,19 +163,26 @@ func makeMenuMessage(menu Menu) *linebot.FlexMessage {
 	return message
 }
 
-func makeHalfConfirmation(products Products, menu Menu, order Order, price int) *linebot.TextMessage {
+func (app *app) makeHalfConfirmation(userID string) (*linebot.TextMessage, error) {
+	userSession := app.sessionStore.sessions[userID]
 	var menuText string
 
-	for id, n := range products {
-		menuText += "・" + menu.searchItemNameByID(id) + " x " + strconv.Itoa(n) + "\n"
+	order, err := app.fetchUserOrder(userID)
+	if err != nil {
+		return nil, err
 	}
-	return linebot.NewTextMessage(fmt.Sprintf("ご注文途中確認\n\nお間違いなければ次のステップに移ります。\n\n1. 日程 : %s\n2. 時間 : %s\n3. 品物: \n%s\n\n4. お会計 : ¥%d", order.Date, order.Time, menuText, price))
+
+	for id, product := range userSession.products {
+		menuText += "・" + app.service.menu.searchItemNameByID(id) + " x " + strconv.Itoa(product.Stock) + "\n"
+	}
+	return linebot.NewTextMessage(fmt.Sprintf("ご注文途中確認\n\nお間違いなければ次のステップに移ります。\n\n1. 日程 : %s\n2. 時間 : %s\n3. 品物: \n%s\n\n4. お会計 : ¥%d", order.Date, order.Time, menuText, app.service.menu.calcPrice(userSession.products))), nil
 }
 
 // makeLocation は 発送先用のメッセージを返すメソッドです。
-func makeLocationMessage(locations []Location) *linebot.TemplateMessage {
+func (app *app) makeLocationMessage() *linebot.TemplateMessage {
 	title := "発送先指定"
 	phrase := "発送先を選択下さい。"
+	locations := app.service.locations
 
 	template := linebot.NewButtonsTemplate(
 		"", title, phrase,
@@ -175,17 +193,23 @@ func makeLocationMessage(locations []Location) *linebot.TemplateMessage {
 }
 
 // makeConfirmationText は 注文確認テキスト用メッセージを返すメソッドです。
-func makeConfirmationTextMessage(products Products, menu Menu, order Order, price int) *linebot.TextMessage {
+func (app *app) makeConfirmationTextMessage(userID string) (*linebot.TextMessage, error) {
 	var menuText string
+	menu := app.service.menu
+	userSession := app.sessionStore.sessions[userID]
+	for id, product := range userSession.products {
+		menuText += "・" + menu.searchItemNameByID(id) + " x " + strconv.Itoa(product.Stock) + "\n"
+	}
 
-	for id, n := range products {
-		menuText += "・" + menu.searchItemNameByID(id) + " x " + strconv.Itoa(n) + "\n"
+	order, err := app.fetchUserOrder(userID)
+	if err != nil {
+		return nil, err
 	}
 
 	orderDetail := fmt.Sprintf("ご注文内容確認\n\n1. 日程 : %s\n2. 時間 : %s\n3. 発送場所: %s\n3. 品物 : \n%s\n4. お会計: ¥%d",
-		order.Date, order.Time, order.Location, menuText, price)
+		order.Date, order.Time, order.Location, menuText, menu.calcPrice(userSession.products))
 
-	return linebot.NewTextMessage(orderDetail)
+	return linebot.NewTextMessage(orderDetail), nil
 }
 
 // makeConfirmationButton は 注文確認テキスト用ボタンを返すメソッドです。
@@ -375,10 +399,10 @@ func makeDecideButton() *linebot.BubbleContainer {
 
 func (m Menu) calcPrice(products Products) int {
 	var price int
-	for id, n := range products {
+	for id, product := range products {
 		for _, v := range m {
 			if v.ID == id {
-				price += v.Price * n
+				price += v.Price * product.Stock
 			}
 		}
 	}
