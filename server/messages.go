@@ -48,7 +48,7 @@ func (m Menu) searchItemNameByID(id string) string {
 var wdays = [...]string{"日", "月", "火", "水", "木", "金", "土"}
 
 type Order struct {
-	User       User      `firestore:"uesr,omitempty" json:"user"`
+	User       User      `firestore:"user,omitempty" json:"user"`
 	Date       string    `firestore:"date,omitempty" json:"date"`
 	Time       string    `firestore:"time,omitempty" json:"time"`
 	Location   string    `firestore:"location,omitempty" json:"location"`
@@ -170,6 +170,10 @@ func (app *app) makeMenuMessage() (*linebot.FlexMessage, error) {
 
 	message := linebot.NewFlexMessage("Menu List", carousel)
 	return message, nil
+}
+
+func (app *app) makeOutOfStockMessage() *linebot.TextMessage {
+	return linebot.NewTextMessage("申し訳ありません。\nお選びいただいた商品は現在在庫切れです。")
 }
 
 func (app *app) makeHalfConfirmation(userID string) (*linebot.TextMessage, error) {

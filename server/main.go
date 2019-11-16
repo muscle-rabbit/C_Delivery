@@ -47,6 +47,9 @@ func main() {
 	r.GET("/order_list", app.getOrderListHandler)
 	r.POST("/order", app.postOrderHandler)
 
+	// セッションの監視
+	go app.watchSessions(time.Second * 3)
+
 	port := os.Getenv("PORT")
 	addr := fmt.Sprintf(":%s", port)
 	r.Run(addr)

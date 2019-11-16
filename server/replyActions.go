@@ -22,21 +22,12 @@ func (app *app) reply(event *linebot.Event, user User) *appError {
 	session := app.sessionStore.searchSession(user.UserID)
 	if session == nil {
 		session = app.sessionStore.createSession(user.UserID)
-		// err := app.createOrder(user)
-		session.orderID = "4KjVlBdMrY61z_QhPe1q9vpwPNYkJ6rfYxh0XaEkllQ"
+		err := app.createOrder(user)
+		// session.orderID = "d_csEs4ikzYy2BB_DYWvp-tqw2y9e4Hli-Q0eESP0vw"
 
-		// if err != nil {
-		// 	return appErrorf(err, "couldn't create order doc")
-		// }
-	}
-
-	if !app.sessionStore.checkSessionLifespan(user.UserID) {
-		err := app.replySorry(event, user.UserID, "一回の注文にかけられる時間（10分）の上限に達したため")
 		if err != nil {
-			return appErrorf(err, "couldn't reply sorry")
+			return appErrorf(err, "couldn't create order doc")
 		}
-		return nil
-
 	}
 
 	switch session.prevStep {
@@ -128,11 +119,14 @@ func (app *app) replyMenu(event *linebot.Event, userID string) error {
 			}
 		} else {
 			// 注文メッセージを待ち受ける。 expeted: {商品名} × n
-			if err := userSession.products.parseMessageToProductText(message.Text, app.service.menu); err != nil {
+			outOfstock, err := app.reserveProducts(userID, message.Text)
+			if err != nil {
 				return err
 			}
-			if err := app.reserveProducts(userID); err != nil {
-				return err
+			if outOfstock {
+				if _, err := app.bot.client.ReplyMessage(event.ReplyToken, app.makeOutOfStockMessage()).Do(); err != nil {
+					return err
+				}
 			}
 			if err := app.updateOrderInChat(userID, Order{Products: userSession.products}); err != nil {
 				return err
@@ -245,19 +239,15 @@ func isTimeMessage(text string) bool {
 	return strings.Contains(text, timeFormat)
 }
 
-func (products Products) parseMessageToProductText(text string, menu Menu) error {
+func parseMessageToProductText(text string, menu Menu) (Products, error) {
+	p := make(Products)
 	i := strings.Index(text, "x")
 	n, err := strconv.Atoi(string(text[i+1:]))
 	if err != nil {
-		return fmt.Errorf("couldn't convert string to int: %v", err)
+		return nil, fmt.Errorf("couldn't convert string to int: %v", err)
 	}
 	id := menu.searchItemIDByName(string(text[:i]))
-	if products[id] != nil {
-		product := Product{Name: menu.searchItemNameByID(id), Stock: products[id].Stock + n, Reserved: false}
-		products[id] = &product
-		return nil
-	}
-	product := Product{Name: menu.searchItemNameByID(id), Stock: n, Reserved: false}
-	products[id] = &product
-	return nil
+
+	p[id] = &Product{Name: menu.searchItemNameByID(id), Stock: n, Reserved: false}
+	return p, nil
 }

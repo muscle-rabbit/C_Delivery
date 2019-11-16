@@ -64,7 +64,7 @@ func newApp() (*app, error) {
 	app := &app{
 		bot:          &bot{},
 		client:       client,
-		sessionStore: &sessionStore{lifespan: time.Minute * 10, sessions: make(sessions)},
+		sessionStore: &sessionStore{lifespan: time.Second * 15, sessions: make(sessions)},
 		service:      &service{},
 	}
 
@@ -281,8 +281,9 @@ func (app *app) deleteOrder(userID string) error {
 	if err != nil {
 		return fmt.Errorf("couldn't create client in addUser: %v", err)
 	}
+	fmt.Println("indelete")
 
-	iter := client.Collection("orders").Where("user_id", "==", userID).Documents(ctx)
+	iter := client.Collection("orders").Where("user.user_id", "==", userID).Documents(ctx)
 	for {
 		doc, err := iter.Next()
 		if err == iterator.Done {
@@ -291,10 +292,12 @@ func (app *app) deleteOrder(userID string) error {
 		if err != nil {
 			return nil
 		}
+		fmt.Println(doc.Ref.ID + " is beign deleted...")
 		if _, err := doc.Ref.Delete(ctx); err != nil {
 			return err
 		}
 	}
+	fmt.Println("returing from delete")
 
 	return nil
 }
@@ -314,42 +317,51 @@ func (app *app) fetchUserOrder(userID string) (Order, error) {
 	return order, nil
 }
 
-func (app *app) reserveProducts(userID string) error {
+// 在庫切れの場合 true, nil を返す。
+func (app *app) reserveProducts(userID string, message string) (bool, error) {
+	productM, err := parseMessageToProductText(message, app.service.menu)
+	if err != nil {
+		return false, err
+	}
 	userSession := app.sessionStore.sessions[userID]
 
 	ctx := context.Background()
 	client, err := app.client.Firestore(ctx)
 	if err != nil {
-		return fmt.Errorf("couldn't create client in reserveProduct: %v", err)
+		return false, fmt.Errorf("couldn't create client in reserveProduct: %v", err)
 	}
 
 	stockDocs, err := app.fetchStocks()
 	if err != nil {
-		return err
+		return false, err
 	}
 
-	for id, product := range userSession.products {
+	for id, product := range productM {
 		if product.Reserved {
 			continue
 		}
 		stock, err := stockDocs.searchDocByProductID(id)
 		if err != nil {
-			return err
+			return false, err
 		}
 		if stock.Stock >= product.Stock {
 			stock.Stock -= product.Stock
 			docID, err := stockDocs.searchDocIDByProductID(id)
 			if err != nil {
-				return err
+				return false, err
 			}
 			if _, err := client.Collection("stocks").Doc(docID).Set(ctx, stock); err != nil {
-				return err
+				return false, err
+			}
+			if err := userSession.products.setProduct(productM); err != nil {
+				return false, err
 			}
 			userSession.products[id].Reserved = true
+			return false, nil
 		}
+		return true, nil
 	}
-
-	return nil
+	return false, err
 }
 
 func (app *app) restoreStocks(userID string) error {
@@ -486,6 +498,7 @@ func (app *app) getLocations() ([]Location, error) {
 }
 
 func (app *app) cancelOrder(userID string) error {
+	fmt.Println("in cancel")
 	if err := app.deleteOrder(userID); err != nil {
 		return err
 	}
