@@ -18,12 +18,12 @@ const (
 	end
 )
 
-func (app *app) reply(event *linebot.Event, user User) *appError {
-	session := app.sessionStore.searchSession(user.UserID)
+func (app *app) reply(event *linebot.Event, userID string) *appError {
+	session := app.sessionStore.searchSession(userID)
 	if session == nil {
-		session = app.sessionStore.createSession(user.UserID)
-		err := app.createOrder(user)
-		// session.orderID = "d_csEs4ikzYy2BB_DYWvp-tqw2y9e4Hli-Q0eESP0vw"
+		session = app.sessionStore.createSession(userID)
+		err := app.createOrder(userID)
+		// session.orderID = "ki2XibhAyOFt4dIlYzJfXwwcR2LS_WFxszkIh7-QhV0"
 
 		if err != nil {
 			return appErrorf(err, "couldn't create order doc")
@@ -32,31 +32,31 @@ func (app *app) reply(event *linebot.Event, user User) *appError {
 
 	switch session.prevStep {
 	case begin:
-		if err := app.replyReservationDate(event, user.UserID); err != nil {
+		if err := app.replyReservationDate(event, userID); err != nil {
 			return appErrorf(err, "couldn't reply ReservationDate: %v", err)
 		}
 	case reservateDate:
-		if err := app.replyReservationTime(event, user.UserID); err != nil {
+		if err := app.replyReservationTime(event, userID); err != nil {
 			return appErrorf(err, "couldn't reply ReservationTime")
 		}
 	case reservateTime:
-		if err := app.replyMenu(event, user.UserID); err != nil {
+		if err := app.replyMenu(event, userID); err != nil {
 			return appErrorf(err, "couldn't reply Menu")
 		}
 	case setMenu:
-		if err := app.replyHalfConfirmation(event, user.UserID); err != nil {
+		if err := app.replyHalfConfirmation(event, userID); err != nil {
 			return appErrorf(err, "couldn't reply location")
 		}
 	case setLocation:
-		if err := app.replyConfirmation(event, user.UserID); err != nil {
+		if err := app.replyConfirmation(event, userID); err != nil {
 			return appErrorf(err, "couldn't reply confirmation")
 		}
 	case confirm, end:
-		if err := app.replyFinalMessage(event, user.UserID); err != nil {
+		if err := app.replyFinalMessage(event, userID); err != nil {
 			return appErrorf(err, "couldn't reply thankyou")
 		}
 	default:
-		if err := app.replySorry(event, user.UserID, "注文内容に誤りがあった"); err != nil {
+		if err := app.replySorry(event, userID, "注文内容に誤りがあった"); err != nil {
 			return appErrorf(err, "couldn't reply sorry")
 		}
 	}
@@ -107,6 +107,10 @@ func (app *app) replyMenu(event *linebot.Event, userID string) error {
 				return err
 			}
 		} else if message.Text == "注文決定" {
+			if len(userSession.products) == 0 {
+				_, err := app.bot.client.ReplyMessage(event.ReplyToken, makeUnselectedProductsMessage()).Do()
+				return err
+			}
 			// 次のステップに移る。
 			userSession.prevStep = setMenu
 			message, err := app.makeHalfConfirmation(userID)
@@ -124,7 +128,7 @@ func (app *app) replyMenu(event *linebot.Event, userID string) error {
 				return err
 			}
 			if outOfstock {
-				if _, err := app.bot.client.ReplyMessage(event.ReplyToken, app.makeOutOfStockMessage()).Do(); err != nil {
+				if _, err := app.bot.client.ReplyMessage(event.ReplyToken, makeOutOfStockMessage()).Do(); err != nil {
 					return err
 				}
 			}
@@ -212,18 +216,22 @@ func (app *app) replyThankYou(event *linebot.Event, userID string) error {
 		return err
 	}
 
-	if err := app.sessionStore.deleteUserSession(userID); err != nil {
+	message, err := app.makeOrderDetail(userID)
+	if err != nil {
 		return err
 	}
 
-	if _, err := app.bot.client.ReplyMessage(event.ReplyToken, makeThankYouMessage()).Do(); err != nil {
+	if _, err := app.bot.client.ReplyMessage(event.ReplyToken, makeThankYouMessage(), message).Do(); err != nil {
+		return err
+	}
+	if err := app.sessionStore.deleteUserSession(userID); err != nil {
 		return err
 	}
 
 	return nil
 }
 func (app *app) replySorry(event *linebot.Event, userID string, cause string) error {
-	if _, err := app.bot.client.ReplyMessage(event.ReplyToken, makeSorryMessage(cause), makeReservationDateMessage()).Do(); err != nil {
+	if _, err := app.bot.client.ReplyMessage(event.ReplyToken, makeSorryMessage(cause)).Do(); err != nil {
 		return err
 	}
 
@@ -232,6 +240,20 @@ func (app *app) replySorry(event *linebot.Event, userID string, cause string) er
 	}
 
 	return nil
+}
+
+func (app *app) replyDenyWorkerLogin(event *linebot.Event, userID string) error {
+	message, err := app.makeDenyWorkerMessage(userID)
+	if err != nil {
+		return err
+	}
+	_, err = app.bot.client.ReplyMessage(event.ReplyToken, message).Do()
+	return err
+}
+
+func (app *app) replyWorkerPanel(event *linebot.Event, userID string) error {
+	_, err := app.bot.client.ReplyMessage(event.ReplyToken, makeWorkerPanelMessage(userID)).Do()
+	return err
 }
 
 func isTimeMessage(text string) bool {

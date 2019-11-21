@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"strconv"
 	"time"
 
@@ -58,6 +59,7 @@ type Order struct {
 	InProgress bool      `firestore:"in_progress,omitempty" json:"in_progress"`
 	CreatedAt  time.Time `firestore:"created_at,omitempty" json:"created_at"`
 	UpdatedAt  time.Time `firestore:"updated_at,omitempty" json:"updated_at"`
+	ChatID     string    `firestore:"chat_id,omitempty" json:"chat_id"`
 }
 
 // type OrderList map[string]Order
@@ -172,22 +174,29 @@ func (app *app) makeMenuMessage() (*linebot.FlexMessage, error) {
 	return message, nil
 }
 
-func (app *app) makeOutOfStockMessage() *linebot.TextMessage {
+func makeOutOfStockMessage() *linebot.TextMessage {
 	return linebot.NewTextMessage("申し訳ありません。\nお選びいただいた商品は現在在庫切れです。")
+}
+
+func makeUnselectedProductsMessage() *linebot.TextMessage {
+	return linebot.NewTextMessage("商品をお選びください。")
 }
 
 func (app *app) makeHalfConfirmation(userID string) (*linebot.TextMessage, error) {
 	userSession := app.sessionStore.sessions[userID]
-	var menuText string
 
-	order, err := app.fetchUserOrder(userID)
+	if err := app.updateOrderInChat(userID, Order{TotalPrice: app.service.menu.calcPrice(userSession.products)}); err != nil {
+		return nil, err
+	}
+
+	orderDoc, err := app.fetchUserOrder(userSession.orderID)
 	if err != nil {
 		return nil, err
 	}
 
-	for id, product := range userSession.products {
-		menuText += "・" + app.service.menu.searchItemNameByID(id) + " x " + strconv.Itoa(product.Stock) + "\n"
-	}
+	menuText := app.service.menu.makeMesssageText(userSession.products)
+	order := orderDoc.Order
+
 	return linebot.NewTextMessage(fmt.Sprintf("ご注文途中確認\n\nお間違いなければ次のステップに移ります。\n\n1. 日程 : %s\n2. 時間 : %s\n3. 品物: \n%s\n\n4. お会計 : ¥%d", order.Date, order.Time, menuText, app.service.menu.calcPrice(userSession.products))), nil
 }
 
@@ -214,10 +223,12 @@ func (app *app) makeConfirmationTextMessage(userID string) (*linebot.TextMessage
 		menuText += "・" + menu.searchItemNameByID(id) + " x " + strconv.Itoa(product.Stock) + "\n"
 	}
 
-	order, err := app.fetchUserOrder(userID)
+	orderDoc, err := app.fetchUserOrder(userSession.orderID)
 	if err != nil {
 		return nil, err
 	}
+
+	order := orderDoc.Order
 
 	orderDetail := fmt.Sprintf("ご注文内容確認\n\n1. 日程 : %s\n2. 時間 : %s\n3. 発送場所: %s\n3. 品物 : \n%s\n4. お会計: ¥%d",
 		order.Date, order.Time, order.Location, menuText, menu.calcPrice(userSession.products))
@@ -247,6 +258,14 @@ func makeThankYouMessage() *linebot.TextMessage {
 func makeSorryMessage(cause string) *linebot.TextMessage {
 	message := "申し訳ありません。\n" + cause + "\n最初から注文をやり直してください。"
 	return linebot.NewTextMessage(message)
+}
+
+func (app *app) makeDenyWorkerMessage(userID string) (*linebot.TextMessage, error) {
+	user, err := app.fetchUserByDocID(userID)
+	if err != nil {
+		return nil, err
+	}
+	return linebot.NewTextMessage(user.DisplayName + "さんは配達員として登録されていないため、ログインできませんでした。"), nil
 }
 
 func makeMenuCard(item Item, stock int) *linebot.BubbleContainer {
@@ -429,6 +448,241 @@ func makeDecideButton() *linebot.BubbleContainer {
 			},
 		},
 	}
+}
+func (app *app) makeTest(userID string) *linebot.FlexMessage {
+	container := &linebot.BubbleContainer{
+		Type: "bubble",
+		Body: &linebot.BoxComponent{
+			Type:    linebot.FlexComponentTypeBox,
+			Layout:  linebot.FlexBoxLayoutTypeVertical,
+			Spacing: linebot.FlexComponentSpacingTypeMd,
+			Contents: []linebot.FlexComponent{
+				&linebot.TextComponent{
+					Type:    linebot.FlexComponentTypeText,
+					Text:    "配達員専用",
+					Wrap:    true,
+					Weight:  "bold",
+					Gravity: "center",
+					Size:    linebot.FlexTextSizeTypeXl,
+				},
+			},
+		},
+		Footer: &linebot.BoxComponent{
+			Type:   linebot.FlexComponentTypeBox,
+			Layout: linebot.FlexBoxLayoutTypeVertical,
+			Contents: []linebot.FlexComponent{
+				&linebot.SpacerComponent{
+					Type: linebot.FlexComponentTypeSpacer,
+					Size: linebot.FlexSpacerSizeTypeXs,
+				},
+				&linebot.ButtonComponent{
+					Type:   linebot.FlexComponentTypeButton,
+					Style:  linebot.FlexButtonStyleTypePrimary,
+					Color:  "#905c44",
+					Action: linebot.NewURIAction("開く", os.Getenv("LIFF_ENDPOINT")+"/user/"+userID+"/worker_panel"),
+				},
+			},
+		},
+	}
+	return linebot.NewFlexMessage("注文詳細", container)
+}
+
+func (app *app) makeOrderDetail(userID string) (*linebot.FlexMessage, error) {
+	userSession := app.sessionStore.sessions[userID]
+	orderDoc, err := app.fetchUserOrder(userSession.orderID)
+	if err != nil {
+		return nil, err
+	}
+	order := orderDoc.Order
+	fmt.Println("url: ", os.Getenv("LIFF_ENDPOINT")+"/user/"+userID+"/order/"+userSession.orderID+"/chats/"+order.ChatID)
+
+	container := &linebot.BubbleContainer{
+		Type: "bubble",
+		Body: &linebot.BoxComponent{
+			Type:    linebot.FlexComponentTypeBox,
+			Layout:  linebot.FlexBoxLayoutTypeVertical,
+			Spacing: linebot.FlexComponentSpacingTypeMd,
+			Contents: []linebot.FlexComponent{
+				&linebot.TextComponent{
+					Type:    linebot.FlexComponentTypeText,
+					Text:    order.User.DisplayName + "さんの\nご注文詳細",
+					Wrap:    true,
+					Weight:  "bold",
+					Gravity: "center",
+					Size:    linebot.FlexTextSizeTypeXl,
+				},
+				&linebot.BoxComponent{
+					Type:    linebot.FlexComponentTypeBox,
+					Layout:  linebot.FlexBoxLayoutTypeVertical,
+					Margin:  "lg",
+					Spacing: linebot.FlexComponentSpacingTypeSm,
+					Contents: []linebot.FlexComponent{
+						&linebot.BoxComponent{
+							Type:    linebot.FlexComponentTypeBox,
+							Layout:  linebot.FlexBoxLayoutTypeBaseline,
+							Spacing: linebot.FlexComponentSpacingTypeSm,
+							Contents: []linebot.FlexComponent{
+								&linebot.TextComponent{
+									Type:  linebot.FlexComponentTypeText,
+									Text:  "日程",
+									Color: "#aaaaaa",
+									Size:  linebot.FlexTextSizeTypeSm,
+									Flex:  linebot.IntPtr(1),
+								},
+								&linebot.TextComponent{
+									Type:  linebot.FlexComponentTypeText,
+									Text:  order.Date,
+									Color: "#666666",
+									Size:  linebot.FlexTextSizeTypeSm,
+									Flex:  linebot.IntPtr(4),
+								},
+							},
+						},
+						&linebot.BoxComponent{
+							Type:    linebot.FlexComponentTypeBox,
+							Layout:  linebot.FlexBoxLayoutTypeBaseline,
+							Spacing: linebot.FlexComponentSpacingTypeSm,
+							Contents: []linebot.FlexComponent{
+								&linebot.TextComponent{
+									Type:  linebot.FlexComponentTypeText,
+									Text:  "時間",
+									Color: "#aaaaaa",
+									Size:  linebot.FlexTextSizeTypeSm,
+									Flex:  linebot.IntPtr(1),
+								},
+								&linebot.TextComponent{
+									Type:  linebot.FlexComponentTypeText,
+									Text:  order.Time,
+									Color: "#666666",
+									Size:  linebot.FlexTextSizeTypeSm,
+									Flex:  linebot.IntPtr(4),
+								},
+							},
+						},
+						&linebot.BoxComponent{
+							Type:    linebot.FlexComponentTypeBox,
+							Layout:  linebot.FlexBoxLayoutTypeBaseline,
+							Spacing: linebot.FlexComponentSpacingTypeSm,
+							Contents: []linebot.FlexComponent{
+								&linebot.TextComponent{
+									Type:  linebot.FlexComponentTypeText,
+									Text:  "場所",
+									Color: "#aaaaaa",
+									Size:  linebot.FlexTextSizeTypeSm,
+									Flex:  linebot.IntPtr(1),
+								},
+								&linebot.TextComponent{
+									Type:  linebot.FlexComponentTypeText,
+									Text:  order.Location,
+									Color: "#666666",
+									Size:  linebot.FlexTextSizeTypeSm,
+									Flex:  linebot.IntPtr(4),
+								},
+							},
+						},
+						&linebot.BoxComponent{
+							Type:    linebot.FlexComponentTypeBox,
+							Layout:  linebot.FlexBoxLayoutTypeBaseline,
+							Spacing: linebot.FlexComponentSpacingTypeSm,
+							Contents: []linebot.FlexComponent{
+								&linebot.TextComponent{
+									Type:  linebot.FlexComponentTypeText,
+									Text:  "商品",
+									Color: "#aaaaaa",
+									Size:  linebot.FlexTextSizeTypeSm,
+									Flex:  linebot.IntPtr(1),
+								},
+								&linebot.TextComponent{
+									Type:  linebot.FlexComponentTypeText,
+									Wrap:  true,
+									Text:  app.service.menu.makeMesssageText(order.Products),
+									Color: "#666666",
+									Size:  linebot.FlexTextSizeTypeSm,
+									Flex:  linebot.IntPtr(4),
+								},
+							},
+						},
+						&linebot.BoxComponent{
+							Type:    linebot.FlexComponentTypeBox,
+							Layout:  linebot.FlexBoxLayoutTypeBaseline,
+							Spacing: linebot.FlexComponentSpacingTypeSm,
+							Contents: []linebot.FlexComponent{
+								&linebot.TextComponent{
+									Type:  linebot.FlexComponentTypeText,
+									Text:  "合計",
+									Color: "#aaaaaa",
+									Size:  linebot.FlexTextSizeTypeSm,
+									Flex:  linebot.IntPtr(1),
+								},
+								&linebot.TextComponent{
+									Type:  linebot.FlexComponentTypeText,
+									Text:  "¥ " + strconv.Itoa(order.TotalPrice),
+									Color: "#666666",
+									Size:  linebot.FlexTextSizeTypeSm,
+									Flex:  linebot.IntPtr(4),
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		Footer: &linebot.BoxComponent{
+			Type:   linebot.FlexComponentTypeBox,
+			Layout: linebot.FlexBoxLayoutTypeVertical,
+			Contents: []linebot.FlexComponent{
+				&linebot.SpacerComponent{
+					Type: linebot.FlexComponentTypeSpacer,
+					Size: linebot.FlexSpacerSizeTypeXs,
+				},
+				&linebot.ButtonComponent{
+					Type:   linebot.FlexComponentTypeButton,
+					Style:  linebot.FlexButtonStyleTypePrimary,
+					Color:  "#905c44",
+					Action: linebot.NewURIAction("チャットを開始する。", os.Getenv("LIFF_ENDPOINT")+"/user/"+userID+"/order/"+userSession.orderID+"/chats/"+order.ChatID),
+				},
+			},
+		},
+	}
+	return linebot.NewFlexMessage("注文詳細", container), nil
+}
+
+func makeWorkerPanelMessage(userID string) *linebot.FlexMessage {
+	container := &linebot.BubbleContainer{
+		Type: "bubble",
+		Body: &linebot.BoxComponent{
+			Type:    linebot.FlexComponentTypeBox,
+			Layout:  linebot.FlexBoxLayoutTypeVertical,
+			Spacing: linebot.FlexComponentSpacingTypeMd,
+			Contents: []linebot.FlexComponent{
+				&linebot.TextComponent{
+					Type:    linebot.FlexComponentTypeText,
+					Text:    "配達員専用",
+					Wrap:    true,
+					Weight:  "bold",
+					Gravity: "center",
+					Size:    linebot.FlexTextSizeTypeXl,
+				},
+			},
+		},
+		Footer: &linebot.BoxComponent{
+			Type:   linebot.FlexComponentTypeBox,
+			Layout: linebot.FlexBoxLayoutTypeVertical,
+			Contents: []linebot.FlexComponent{
+				&linebot.SpacerComponent{
+					Type: linebot.FlexComponentTypeSpacer,
+					Size: linebot.FlexSpacerSizeTypeXs,
+				},
+				&linebot.ButtonComponent{
+					Type:   linebot.FlexComponentTypeButton,
+					Style:  linebot.FlexButtonStyleTypePrimary,
+					Color:  "#905c44",
+					Action: linebot.NewURIAction("開く", os.Getenv("LIFF_ENDPOINT")+"/user/"+userID+"/worker_panel"),
+				},
+			},
+		},
+	}
+	return linebot.NewFlexMessage("注文詳細", container)
 }
 
 func (m Menu) calcPrice(products Products) int {

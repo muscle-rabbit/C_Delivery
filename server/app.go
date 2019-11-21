@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"time"
 
 	firebase "firebase.google.com/go"
@@ -76,10 +77,18 @@ func (products Products) setProduct(p Products) error {
 	return fmt.Errorf("couldn't set prodct in session")
 }
 
+func (menu Menu) makeMesssageText(p Products) string {
+	var menuText string
+	for id, product := range p {
+		menuText += "・" + menu.searchItemNameByID(id) + " x " + strconv.Itoa(product.Stock) + "\n"
+	}
+	return menuText
+}
+
 type Product struct {
-	Name     string `firestore:"name,omitempty"`
-	Stock    int    `firestore:"stock,omitempty"`
-	Reserved bool   `firestore:"reserved,omitempty"`
+	Name     string `firestore:"name,omitempty" json:"name"`
+	Stock    int    `firestore:"stock,omitempty" json:"stock"`
+	Reserved bool   `firestore:"reserved,omitempty" json:"reserved"`
 }
 
 func (ss *sessionStore) createSession(userID string) *userSession {
