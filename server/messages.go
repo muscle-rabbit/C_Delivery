@@ -7,92 +7,10 @@ import (
 	"time"
 
 	"github.com/line/line-bot-sdk-go/linebot"
+	"github.com/shinyamizuno1008/C_Delivery/server/firestore"
 )
 
-type Item struct {
-	ID         string
-	Name       string `firestore:"name,omitempty"`
-	Price      int    `firestore:"price,omitempty"`
-	PictureURL string `firestore:"picture_url,omitempty"`
-}
-
-type Menu []Item
-
-func (m Menu) searchItemByName(key string) Item {
-	for _, item := range m {
-		if item.Name == key {
-			return item
-		}
-	}
-	// TODO: nil を返したい。
-	return Item{}
-}
-
-func (m Menu) searchItemIDByName(key string) string {
-	for _, item := range m {
-		if item.Name == key {
-			return item.ID
-		}
-	}
-	return ""
-}
-
-func (m Menu) searchItemNameByID(id string) string {
-	for _, item := range m {
-		if item.ID == id {
-			return item.Name
-		}
-	}
-	return ""
-}
-
 var wdays = [...]string{"日", "月", "火", "水", "木", "金", "土"}
-
-type Order struct {
-	User       User      `firestore:"user,omitempty" json:"user"`
-	Date       string    `firestore:"date,omitempty" json:"date"`
-	Time       string    `firestore:"time,omitempty" json:"time"`
-	Location   string    `firestore:"location,omitempty" json:"location"`
-	Products   Products  `firestore:"products,omitempty" json:"products"`
-	TotalPrice int       `firestore:"total_price,omitempty" json:"total_price"`
-	InTrade    bool      `firestore:"in_trade,omitempty" json:"in_trade"`
-	InProgress bool      `firestore:"in_progress,omitempty" json:"in_progress"`
-	CreatedAt  time.Time `firestore:"created_at,omitempty" json:"created_at"`
-	UpdatedAt  time.Time `firestore:"updated_at,omitempty" json:"updated_at"`
-	ChatID     string    `firestore:"chat_id,omitempty" json:"chat_id"`
-}
-
-// type OrderList map[string]Order
-
-type OrderDocument struct {
-	ID    string `firestore:"document_id,omitempty" json:"document_id"`
-	Order Order  `firestore:"order,omitempty" json:"order"`
-}
-
-func (bh businessHours) makeTimeTable() []string {
-	today := time.Now()
-	jst, _ := time.LoadLocation("Asia/Tokyo")
-
-	begin := time.Date(today.Year(), today.Month(), today.Day(), bh.begin.hour, bh.begin.minute, 0, 0, jst)
-	end := time.Date(today.Year(), today.Month(), today.Day(), bh.end.hour, bh.end.minute, 0, 0, jst)
-
-	diff := end.Sub(begin)
-	interval := time.Duration(bh.interval) * time.Minute
-
-	n := int(diff / interval)
-	tt := make([]string, n+1)
-	layout := "3:04AM"
-
-	for i := 0; i < n+1; i++ {
-		if i == 0 {
-			tt[0] = begin.Format(layout) + "~" + begin.Add(interval).Format(layout)
-			continue
-		}
-		tt[i] = begin.Add(interval*time.Duration(i-1)).Format(layout) + "~" + begin.Add(interval*time.Duration(i)).Format(layout)
-	}
-
-	return tt
-}
 
 // makeReservationDateMessage は 注文日程指定用のメッセージを返すメソッドです。
 func makeReservationDateMessage() *linebot.TemplateMessage {
@@ -116,10 +34,9 @@ func makeReservationDateMessage() *linebot.TemplateMessage {
 }
 
 // makeReservationTimeMessage は 注文時間指定用のメッセージを返すメソッドです。
-func (app *app) makeReservationTimeMessage() *linebot.TemplateMessage {
+func makeReservationTimeMessage(timeTable []string, lastorder string) *linebot.TemplateMessage {
 	title := "時間指定"
-	phrase := "ご注文時間をお選びください。\nラストオーダー: " + app.service.businessHours.lastorder
-	timeTable := app.service.businessHours.makeTimeTable()
+	phrase := "ご注文時間をお選びください。\nラストオーダー: " + lastorder
 
 	template := linebot.NewButtonsTemplate(
 		"", title, phrase,
@@ -134,32 +51,18 @@ func (app *app) makeReservationTimeMessage() *linebot.TemplateMessage {
 	return message
 }
 
-// linebot.NewMessageAction("", title, phrase, ...actions) みたいに使いけどできない。
-func (app *app) makeTimeTableMessageAction() []*linebot.MessageAction {
-	timeTable := app.service.businessHours.makeTimeTable()
-	actions := make([]*linebot.MessageAction, len(timeTable))
-	for i, time := range timeTable {
-		actions[i] = linebot.NewMessageAction(time, time)
-	}
-	return actions
-}
-
 // makeMenuText は 商品指定用のテキストメッセージを返すメソッドです。
 func makeMenuTextMessage() *linebot.TextMessage {
 	return linebot.NewTextMessage("ご注文品をお選びください。")
 }
 
 // makeMenu は 商品指定用の写真付きカルーセルを返すメソッドです。
-func (app *app) makeMenuMessage() (*linebot.FlexMessage, error) {
+func makeMenuMessage(menu firestore.Menu, stockDocs firestore.StockDocuments) (*linebot.FlexMessage, error) {
 	var containers []*linebot.BubbleContainer
 	containers = append(containers, makeDecideButton())
 
-	stockDocs, err := app.fetchStocks()
-	if err != nil {
-		return nil, err
-	}
-	for _, item := range app.service.menu {
-		stock, err := stockDocs.searchDocByProductID(item.ID)
+	for _, item := range menu {
+		stock, err := stockDocs.SearchDocByProductID(item.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -182,8 +85,8 @@ func makeUnselectedProductsMessage() *linebot.TextMessage {
 	return linebot.NewTextMessage("商品をお選びください。")
 }
 
-func (app *app) makeHalfConfirmation(userID string) (*linebot.TextMessage, error) {
-	userSession := app.sessionStore.sessions[userID]
+func (client *Client) makeHalfConfirmation(order firestore.Order, userID string) (*linebot.TextMessage, error) {
+	userSession := client.SessionStore.Sessions[userID]
 
 	if err := app.updateOrderInChat(userID, Order{TotalPrice: app.service.menu.calcPrice(userSession.products)}); err != nil {
 		return nil, err
@@ -201,10 +104,9 @@ func (app *app) makeHalfConfirmation(userID string) (*linebot.TextMessage, error
 }
 
 // makeLocation は 発送先用のメッセージを返すメソッドです。
-func (app *app) makeLocationMessage() *linebot.TemplateMessage {
+func makeLocationMessage(location firestore.Location) *linebot.TemplateMessage {
 	title := "発送先指定"
 	phrase := "発送先を選択下さい。"
-	locations := app.service.locations
 
 	template := linebot.NewButtonsTemplate(
 		"", title, phrase,
@@ -215,7 +117,7 @@ func (app *app) makeLocationMessage() *linebot.TemplateMessage {
 }
 
 // makeConfirmationText は 注文確認テキスト用メッセージを返すメソッドです。
-func (app *app) makeConfirmationTextMessage(userID string) (*linebot.TextMessage, error) {
+func makeConfirmationTextMessage(userID string) (*linebot.TextMessage, error) {
 	var menuText string
 	menu := app.service.menu
 	userSession := app.sessionStore.sessions[userID]
@@ -260,7 +162,7 @@ func makeSorryMessage(cause string) *linebot.TextMessage {
 	return linebot.NewTextMessage(message)
 }
 
-func (app *app) makeDenyWorkerMessage(userID string) (*linebot.TextMessage, error) {
+func makeDenyWorkerMessage(userID string) (*linebot.TextMessage, error) {
 	user, err := app.fetchUserByDocID(userID)
 	if err != nil {
 		return nil, err
@@ -268,7 +170,7 @@ func (app *app) makeDenyWorkerMessage(userID string) (*linebot.TextMessage, erro
 	return linebot.NewTextMessage(user.DisplayName + "さんは配達員として登録されていないため、ログインできませんでした。"), nil
 }
 
-func makeMenuCard(item Item, stock int) *linebot.BubbleContainer {
+func makeMenuCard(item common.ProductItem, stock int) *linebot.BubbleContainer {
 	return &linebot.BubbleContainer{
 		Type: "bubble",
 		Hero: &linebot.ImageComponent{
@@ -449,45 +351,8 @@ func makeDecideButton() *linebot.BubbleContainer {
 		},
 	}
 }
-func (app *app) makeTest(userID string) *linebot.FlexMessage {
-	container := &linebot.BubbleContainer{
-		Type: "bubble",
-		Body: &linebot.BoxComponent{
-			Type:    linebot.FlexComponentTypeBox,
-			Layout:  linebot.FlexBoxLayoutTypeVertical,
-			Spacing: linebot.FlexComponentSpacingTypeMd,
-			Contents: []linebot.FlexComponent{
-				&linebot.TextComponent{
-					Type:    linebot.FlexComponentTypeText,
-					Text:    "配達員専用",
-					Wrap:    true,
-					Weight:  "bold",
-					Gravity: "center",
-					Size:    linebot.FlexTextSizeTypeXl,
-				},
-			},
-		},
-		Footer: &linebot.BoxComponent{
-			Type:   linebot.FlexComponentTypeBox,
-			Layout: linebot.FlexBoxLayoutTypeVertical,
-			Contents: []linebot.FlexComponent{
-				&linebot.SpacerComponent{
-					Type: linebot.FlexComponentTypeSpacer,
-					Size: linebot.FlexSpacerSizeTypeXs,
-				},
-				&linebot.ButtonComponent{
-					Type:   linebot.FlexComponentTypeButton,
-					Style:  linebot.FlexButtonStyleTypePrimary,
-					Color:  "#905c44",
-					Action: linebot.NewURIAction("開く", os.Getenv("LIFF_ENDPOINT")+"/user/"+userID+"/worker_panel"),
-				},
-			},
-		},
-	}
-	return linebot.NewFlexMessage("注文詳細", container)
-}
 
-func (app *app) makeOrderDetail(userID string) (*linebot.FlexMessage, error) {
+func makeOrderDetail(userID string) (*linebot.FlexMessage, error) {
 	userSession := app.sessionStore.sessions[userID]
 	orderDoc, err := app.fetchUserOrder(userSession.orderID)
 	if err != nil {
@@ -683,16 +548,4 @@ func makeWorkerPanelMessage(userID string) *linebot.FlexMessage {
 		},
 	}
 	return linebot.NewFlexMessage("注文詳細", container)
-}
-
-func (m Menu) calcPrice(products Products) int {
-	var price int
-	for id, product := range products {
-		for _, v := range m {
-			if v.ID == id {
-				price += v.Price * product.Stock
-			}
-		}
-	}
-	return price
 }
