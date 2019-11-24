@@ -6,23 +6,14 @@ import (
 	"strings"
 
 	"github.com/line/line-bot-sdk-go/linebot"
+	"github.com/shinyamizuno1008/C_Delivery/server/firestore"
 )
 
-const (
-	begin int = iota
-	reservateDate
-	reservateTime
-	setMenu
-	setLocation
-	confirm
-	end
-)
-
-func (app *app) reply(event *linebot.Event, userID string) *appError {
-	session := app.sessionStore.searchSession(userID)
+func (client *Client) reply(event *linebot.Event, userID string) *appError {
+	session := client.sessionStore.searchSession(userID)
 	if session == nil {
-		session = app.sessionStore.createSession(userID)
-		err := app.createOrder(userID)
+		session = client.sessionStore.createSession(userID)
+		err := client.createOrder(userID)
 		// session.orderID = "ki2XibhAyOFt4dIlYzJfXwwcR2LS_WFxszkIh7-QhV0"
 
 		if err != nil {
@@ -32,107 +23,107 @@ func (app *app) reply(event *linebot.Event, userID string) *appError {
 
 	switch session.prevStep {
 	case begin:
-		if err := app.replyReservationDate(event, userID); err != nil {
+		if err := client.replyReservationDate(event, userID); err != nil {
 			return appErrorf(err, "couldn't reply ReservationDate: %v", err)
 		}
 	case reservateDate:
-		if err := app.replyReservationTime(event, userID); err != nil {
+		if err := client.replyReservationTime(event, userID); err != nil {
 			return appErrorf(err, "couldn't reply ReservationTime")
 		}
 	case reservateTime:
-		if err := app.replyMenu(event, userID); err != nil {
+		if err := client.replyMenu(event, userID); err != nil {
 			return appErrorf(err, "couldn't reply Menu")
 		}
 	case setMenu:
-		if err := app.replyHalfConfirmation(event, userID); err != nil {
+		if err := client.replyHalfConfirmation(event, userID); err != nil {
 			return appErrorf(err, "couldn't reply location")
 		}
 	case setLocation:
-		if err := app.replyConfirmation(event, userID); err != nil {
+		if err := client.replyConfirmation(event, userID); err != nil {
 			return appErrorf(err, "couldn't reply confirmation")
 		}
 	case confirm, end:
-		if err := app.replyFinalMessage(event, userID); err != nil {
+		if err := client.replyFinalMessage(event, userID); err != nil {
 			return appErrorf(err, "couldn't reply thankyou")
 		}
 	default:
-		if err := app.replySorry(event, userID, "注文内容に誤りがあった"); err != nil {
+		if err := client.replySorry(event, userID, "注文内容に誤りがあった"); err != nil {
 			return appErrorf(err, "couldn't reply sorry")
 		}
 	}
 	return nil
 }
 
-func (app *app) replyReservationDate(event *linebot.Event, userID string) error {
-	session := app.sessionStore.searchSession(userID)
+func (client *Client) replyReservationDate(event *linebot.Event, userID string) error {
+	session := client.sessionStore.searchSession(userID)
 	session.prevStep = reservateDate
 
-	if _, err := app.bot.client.ReplyMessage(event.ReplyToken, makeReservationDateMessage()).Do(); err != nil {
+	if _, err := client.bot.client.ReplyMessage(event.ReplyToken, makeReservationDateMessage()).Do(); err != nil {
 		return err
 	}
 	return nil
 }
-func (app *app) replyReservationTime(event *linebot.Event, userID string) error {
-	session := app.sessionStore.searchSession(userID)
+func (client *Client) replyReservationTime(event *linebot.Event, userID string) error {
+	session := client.sessionStore.searchSession(userID)
 
 	// TODO: 冗長なのでリファクタ必要。event.Message.Text みたいな使い方したい。
 	switch message := event.Message.(type) {
 	case *linebot.TextMessage:
-		if err := app.updateOrderInChat(userID, Order{Date: message.Text}); err != nil {
+		if err := client.updateOrderInChat(userID, Order{Date: message.Text}); err != nil {
 			return err
 		}
 	}
 
 	session.prevStep = reservateTime
 
-	if _, err := app.bot.client.ReplyMessage(event.ReplyToken, app.makeReservationTimeMessage()).Do(); err != nil {
+	if _, err := client.ReplyMessage(event.ReplyToken, client.makeReservationTimeMessage()).Do(); err != nil {
 		return err
 	}
 	return nil
 }
-func (app *app) replyMenu(event *linebot.Event, userID string) error {
-	userSession := app.sessionStore.searchSession(userID)
+func (client *Client) replyMenu(event *linebot.Event, userID string) error {
+	userSession := client.sessionStore.searchSession(userID)
 
 	// TODO: 冗長なのでリファクタ必要。event.Message.Text みたいな使い方したい。
 	switch message := event.Message.(type) {
 	case *linebot.TextMessage:
 		if isTimeMessage(message.Text) {
 			// メニューカルセールを返す。
-			app.updateOrderInChat(userID, Order{Time: message.Text})
-			message, err := app.makeMenuMessage()
+			client.updateOrderInChat(userID, Order{Time: message.Text})
+			message, err := client.makeMenuMessage()
 			if err != nil {
 				return err
 			}
-			if _, err := app.bot.client.ReplyMessage(event.ReplyToken, makeMenuTextMessage(), message).Do(); err != nil {
+			if _, err := client.bot.client.ReplyMessage(event.ReplyToken, makeMenuTextMessage(), message).Do(); err != nil {
 				return err
 			}
 		} else if message.Text == "注文決定" {
 			if len(userSession.products) == 0 {
-				_, err := app.bot.client.ReplyMessage(event.ReplyToken, makeUnselectedProductsMessage()).Do()
+				_, err := client.bot.client.ReplyMessage(event.ReplyToken, makeUnselectedProductsMessage()).Do()
 				return err
 			}
 			// 次のステップに移る。
 			userSession.prevStep = setMenu
-			message, err := app.makeHalfConfirmation(userID)
+			message, err := client.makeHalfConfirmation(userID)
 			if err != nil {
 				return err
 			}
 
-			if _, err := app.bot.client.ReplyMessage(event.ReplyToken, message, makeConfirmationButtonMessage()).Do(); err != nil {
+			if _, err := client.bot.client.ReplyMessage(event.ReplyToken, message, makeConfirmationButtonMessage()).Do(); err != nil {
 				return err
 			}
 		} else {
 			// 注文メッセージを待ち受ける。 expeted: {商品名} × n
-			outOfstock, err := app.reserveProducts(userID, message.Text)
+			outOfstock, err := client.reserveProducts(userID, message.Text)
 			if err != nil {
 				return err
 			}
 			if outOfstock {
-				if _, err := app.bot.client.ReplyMessage(event.ReplyToken, makeOutOfStockMessage()).Do(); err != nil {
+				if _, err := client.bot.client.ReplyMessage(event.ReplyToken, makeOutOfStockMessage()).Do(); err != nil {
 					return err
 				}
 			}
-			if err := app.updateOrderInChat(userID, Order{Products: userSession.products}); err != nil {
+			if err := client.updateOrderInChat(userID, Order{Products: userSession.products}); err != nil {
 				return err
 			}
 		}
@@ -140,17 +131,17 @@ func (app *app) replyMenu(event *linebot.Event, userID string) error {
 	return nil
 }
 
-func (app *app) replyHalfConfirmation(event *linebot.Event, userID string) error {
+func (client *Client) replyHalfConfirmation(event *linebot.Event, userID string) error {
 	// TODO: 冗長なのでリファクタ必要。event.Message.Text みたいな使い方したい。
 
 	switch message := event.Message.(type) {
 	case *linebot.TextMessage:
 		if message.Text == "はい" {
-			if err := app.replyLocation(event, userID); err != nil {
+			if err := client.replyLocation(event, userID); err != nil {
 				return err
 			}
 		} else {
-			if err := app.replySorry(event, userID, "注文内容に誤りがあったため"); err != nil {
+			if err := client.replySorry(event, userID, "注文内容に誤りがあったため"); err != nil {
 				return err
 			}
 
@@ -159,50 +150,50 @@ func (app *app) replyHalfConfirmation(event *linebot.Event, userID string) error
 	return nil
 }
 
-func (app *app) replyLocation(event *linebot.Event, userID string) error {
-	session := app.sessionStore.searchSession(userID)
+func (client *Client) replyLocation(event *linebot.Event, userID string) error {
+	session := client.sessionStore.searchSession(userID)
 
 	session.prevStep = setLocation
 
-	if _, err := app.bot.client.ReplyMessage(event.ReplyToken, app.makeLocationMessage()).Do(); err != nil {
+	if _, err := client.bot.client.ReplyMessage(event.ReplyToken, client.makeLocationMessage()).Do(); err != nil {
 		return err
 	}
 	return nil
 }
-func (app *app) replyConfirmation(event *linebot.Event, userID string) error {
-	userSession := app.sessionStore.searchSession(userID)
+func (client *Client) replyConfirmation(event *linebot.Event, userID string) error {
+	userSession := client.sessionStore.searchSession(userID)
 
 	// 一つ前のステップで取得した値をセットする。
 	// TODO: 冗長なのでリファクタ必要。event.Message.Text みたいな使い方したい。
 	switch message := event.Message.(type) {
 	case *linebot.TextMessage:
-		if err := app.updateOrderInChat(userID, Order{Location: message.Text}); err != nil {
+		if err := client.updateOrderInChat(userID, Order{Location: message.Text}); err != nil {
 			return err
 		}
 	}
 	userSession.prevStep = confirm
 
-	message, err := app.makeConfirmationTextMessage(userID)
+	message, err := client.makeConfirmationTextMessage(userID)
 	if err != nil {
 		return err
 	}
 
-	if _, err := app.bot.client.ReplyMessage(event.ReplyToken, message, makeConfirmationButtonMessage()).Do(); err != nil {
+	if _, err := client.bot.client.ReplyMessage(event.ReplyToken, message, makeConfirmationButtonMessage()).Do(); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (app *app) replyFinalMessage(event *linebot.Event, userID string) error {
+func (client *Client) replyFinalMessage(event *linebot.Event, userID string) error {
 	// TODO: 冗長なのでリファクタ必要。event.Message.Text みたいな使い方したい。
 	switch message := event.Message.(type) {
 	case *linebot.TextMessage:
 		if message.Text == "はい" {
-			if err := app.replyThankYou(event, userID); err != nil {
+			if err := client.replyThankYou(event, userID); err != nil {
 				return err
 			}
 		} else {
-			if err := app.replySorry(event, userID, "注文内容に誤りがあったため"); err != nil {
+			if err := client.replySorry(event, userID, "注文内容に誤りがあったため"); err != nil {
 				return err
 			}
 
@@ -211,48 +202,48 @@ func (app *app) replyFinalMessage(event *linebot.Event, userID string) error {
 	return nil
 }
 
-func (app *app) replyThankYou(event *linebot.Event, userID string) error {
-	if err := app.completeOrderInChat(userID); err != nil {
+func (client *Client) replyThankYou(event *linebot.Event, userID string) error {
+	if err := client.completeOrderInChat(userID); err != nil {
 		return err
 	}
 
-	message, err := app.makeOrderDetail(userID)
+	message, err := client.makeOrderDetail(userID)
 	if err != nil {
 		return err
 	}
 
-	if _, err := app.bot.client.ReplyMessage(event.ReplyToken, makeThankYouMessage(), message).Do(); err != nil {
+	if _, err := client.Bot.ReplyMessage(event.ReplyToken, makeThankYouMessage(), message).Do(); err != nil {
 		return err
 	}
-	if err := app.sessionStore.deleteUserSession(userID); err != nil {
+	if err := client.sessionStore.deleteUserSession(userID); err != nil {
 		return err
 	}
 
 	return nil
 }
-func (app *app) replySorry(event *linebot.Event, userID string, cause string) error {
-	if _, err := app.bot.client.ReplyMessage(event.ReplyToken, makeSorryMessage(cause)).Do(); err != nil {
+func (client *Client) replySorry(event *linebot.Event, userID string, cause string) error {
+	if _, err := client.Bot.ReplyMessage(event.ReplyToken, makeSorryMessage(cause)).Do(); err != nil {
 		return err
 	}
 
-	if err := app.cancelOrder(userID); err != nil {
+	if err := client.cancelOrder(userID); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func (app *app) replyDenyWorkerLogin(event *linebot.Event, userID string) error {
-	message, err := app.makeDenyWorkerMessage(userID)
+func (client *Client) replyDenyWorkerLogin(event *linebot.Event, userID string) error {
+	message, err := client.makeDenyWorkerMessage(userID)
 	if err != nil {
 		return err
 	}
-	_, err = app.bot.client.ReplyMessage(event.ReplyToken, message).Do()
+	_, err = client.Bot.ReplyMessage(event.ReplyToken, message).Do()
 	return err
 }
 
-func (app *app) replyWorkerPanel(event *linebot.Event, userID string) error {
-	_, err := app.bot.client.ReplyMessage(event.ReplyToken, makeWorkerPanelMessage(userID)).Do()
+func (client *Client) replyWorkerPanel(event *linebot.Event, userID string) error {
+	_, err := client.Bot.ReplyMessage(event.ReplyToken, makeWorkerPanelMessage(userID)).Do()
 	return err
 }
 
@@ -261,7 +252,7 @@ func isTimeMessage(text string) bool {
 	return strings.Contains(text, timeFormat)
 }
 
-func parseMessageToProductText(text string, menu Menu) (Products, error) {
+func parseMessageToProductText(text string, menu firestore.Menu) (firestore.Products, error) {
 	p := make(Products)
 	i := strings.Index(text, "x")
 	n, err := strconv.Atoi(string(text[i+1:]))
