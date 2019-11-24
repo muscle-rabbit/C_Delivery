@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"time"
 
 	firebase "firebase.google.com/go"
@@ -64,10 +65,30 @@ type detailTime struct {
 // map[{products Document の ID}] 製品情報
 type Products map[string]*Product
 
+func (products Products) setProduct(p Products) error {
+	for id, product := range p {
+		if products[id] != nil {
+			products[id].Stock += product.Stock
+			return nil
+		}
+		products[id] = product
+		return nil
+	}
+	return fmt.Errorf("couldn't set prodct in session")
+}
+
+func (menu Menu) makeMesssageText(p Products) string {
+	var menuText string
+	for id, product := range p {
+		menuText += "・" + menu.searchItemNameByID(id) + " x " + strconv.Itoa(product.Stock) + "\n"
+	}
+	return menuText
+}
+
 type Product struct {
-	Name     string `firestore:"name,omitempty"`
-	Stock    int    `firestore:"stock,omitempty"`
-	Reserved bool   `firestore:"reserved,omitempty"`
+	Name     string `firestore:"name,omitempty" json:"name"`
+	Stock    int    `firestore:"stock,omitempty" json:"stock"`
+	Reserved bool   `firestore:"reserved,omitempty" json:"reserved"`
 }
 
 func (ss *sessionStore) createSession(userID string) *userSession {
@@ -106,4 +127,18 @@ func (bot *bot) createBot() error {
 		return err
 	}
 	return err
+}
+
+func (app *app) watchSessions(interval time.Duration) error {
+	ss := app.sessionStore
+	for range time.Tick(interval) {
+		for userID := range ss.sessions {
+			if ok := ss.checkSessionLifespan(userID); !ok {
+				if err := app.cancelOrder(userID); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
 }

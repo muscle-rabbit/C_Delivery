@@ -9,7 +9,6 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
-	"github.com/line/line-bot-sdk-go/linebot"
 )
 
 func main() {
@@ -28,9 +27,11 @@ func main() {
 	r := gin.Default()
 	r.LoadHTMLGlob("../dist/*.html")        // load the built dist path
 	r.LoadHTMLFiles("static/*/*")           //  load the static path
-	r.Static("/static", "../dist/static")   // use the loaded source
+	r.Static("/js", "../dist/js")           // use the loaded source
+	r.Static("/css", "../dist/css")         // use the loaded source
 	r.StaticFile("/", "../dist/index.html") // use the loaded sourc
 
+	// dev 用ミドルウェア
 	r.Use(cors.New(cors.Config{
 		AllowOrigins:  []string{"http://localhost:8080"},
 		AllowMethods:  []string{"POST", "OPTIONS", "GET"},
@@ -43,69 +44,23 @@ func main() {
 	r.POST("/callback", app.callbackHandler)
 
 	// 配達員画面からのエンドポイント
-	r.GET("/order_list", app.getOrderListHandler)
-	r.POST("/order", app.postOrderHandler)
+	r.GET("/order_list", app.getOrdersHandler)
+
+	r.GET("/user/:userID", app.getUserHandler)
+
+	// 注文を取得する用のエンドポイント
+	r.GET("/order/:orderID", app.getOrderHanlder)
+	r.GET("/order/:orderID/*action", app.changeTradeStatusHandler)
+
+	// チャットエンドポイント
+	r.GET("/user/:userID/order/:orderID/chats/:chatID", app.getChatHandler)
+	r.POST("/chats/:chatID", app.postChatHandler)
+	r.GET("/chats/:chatID", app.getChatHandler)
+
+	// セッションの監視
+	go app.watchSessions(time.Second * 3)
 
 	port := os.Getenv("PORT")
 	addr := fmt.Sprintf(":%s", port)
 	r.Run(addr)
-}
-
-func (app *app) callbackHandler(g *gin.Context) {
-	events, err := app.bot.client.ParseRequest(g.Request)
-
-	if err != nil {
-		if err == linebot.ErrInvalidSignature {
-			g.Writer.WriteHeader(400)
-		} else {
-			g.Writer.WriteHeader(500)
-		}
-		return
-	}
-
-	for _, event := range events {
-		if event.Type == linebot.EventTypeMessage {
-			p, _ := app.bot.client.GetProfile(event.Source.UserID).Do()
-			userID, err := app.fetchUser(p)
-			if err != nil {
-				log.Fatal(err)
-			}
-
-			switch message := event.Message.(type) {
-			case *linebot.TextMessage:
-				if app.sessionStore.sessions[userID] != nil {
-					if err := app.reply(event, userID); err != nil {
-						log.Fatal(err)
-					}
-				}
-				if message.Text == "予約開始" {
-					if err := app.reply(event, userID); err != nil {
-						log.Fatal(err)
-					}
-				}
-			}
-		}
-	}
-}
-
-func (app *app) getOrderListHandler(g *gin.Context) {
-	orderDocuments, err := app.fetchOrderDocuments()
-	if err != nil {
-		g.Error(fmt.Errorf("couldn't fetchOrders in orderListHandler: %v", err))
-	}
-
-	g.JSON(200, &orderDocuments)
-	return
-}
-
-func (app *app) postOrderHandler(g *gin.Context) {
-	var orderDocument OrderDocument
-	err := g.BindJSON(&orderDocument)
-	if err != nil {
-		g.Error(fmt.Errorf("coudln't parse reader in postOrderHandler: %v", err))
-	}
-
-	if err := app.toggleOrderFinishedStatus(orderDocument); err != nil {
-		g.Error(fmt.Errorf("couldn't update order in updateOrderFromDeliveryPanel: %v", err))
-	}
 }

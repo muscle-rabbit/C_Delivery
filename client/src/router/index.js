@@ -1,16 +1,30 @@
-import Vue from 'vue'
-import Router from 'vue-router'
-import WorkerPanel from '@/components/WorkerPanel'
+import Vue from "vue";
+import Router from "vue-router";
+import Chat from "@/components/Chat";
+import OrderList from "@/components/WorkerPanel/OrderList";
+import Home from "@/components/Home";
 
-Vue.use(Router)
+Vue.use(Router);
 
 export default new Router({
-  mode: 'history',
   routes: [
     {
-      path: '/',
-      name: 'WorkerPanel',
-      component: WorkerPanel
+      path: "/",
+      name: "Home",
+      component: Home
+    },
+    {
+      path: "/user/:userID/worker_panel",
+      name: "OrderList",
+      component: OrderList,
+      props: true
+    },
+    {
+      path: "/user/:userID/order/:orderID/chats/:chatID",
+      name: "Chat",
+      component: Chat,
+      props: true
     }
-  ]
-})
+  ],
+  mode: "history"
+});

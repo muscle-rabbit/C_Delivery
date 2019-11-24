@@ -23,20 +23,11 @@ func (app *app) reply(event *linebot.Event, userID string) *appError {
 	if session == nil {
 		session = app.sessionStore.createSession(userID)
 		err := app.createOrder(userID)
-		// session.orderID = "4KjVlBdMrY61z_QhPe1q9vpwPNYkJ6rfYxh0XaEkllQ"
+		// session.orderID = "ki2XibhAyOFt4dIlYzJfXwwcR2LS_WFxszkIh7-QhV0"
 
 		if err != nil {
 			return appErrorf(err, "couldn't create order doc")
 		}
-	}
-
-	if !app.sessionStore.checkSessionLifespan(userID) {
-		err := app.replySorry(event, userID, "一回の注文にかけられる時間（10分）の上限に達したため")
-		if err != nil {
-			return appErrorf(err, "couldn't reply sorry")
-		}
-		return nil
-
 	}
 
 	switch session.prevStep {
@@ -108,10 +99,18 @@ func (app *app) replyMenu(event *linebot.Event, userID string) error {
 		if isTimeMessage(message.Text) {
 			// メニューカルセールを返す。
 			app.updateOrderInChat(userID, Order{Time: message.Text})
-			if _, err := app.bot.client.ReplyMessage(event.ReplyToken, makeMenuTextMessage(), app.makeMenuMessage()).Do(); err != nil {
+			message, err := app.makeMenuMessage()
+			if err != nil {
+				return err
+			}
+			if _, err := app.bot.client.ReplyMessage(event.ReplyToken, makeMenuTextMessage(), message).Do(); err != nil {
 				return err
 			}
 		} else if message.Text == "注文決定" {
+			if len(userSession.products) == 0 {
+				_, err := app.bot.client.ReplyMessage(event.ReplyToken, makeUnselectedProductsMessage()).Do()
+				return err
+			}
 			// 次のステップに移る。
 			userSession.prevStep = setMenu
 			message, err := app.makeHalfConfirmation(userID)
@@ -124,11 +123,14 @@ func (app *app) replyMenu(event *linebot.Event, userID string) error {
 			}
 		} else {
 			// 注文メッセージを待ち受ける。 expeted: {商品名} × n
-			if err := userSession.products.parseMessageToProductText(message.Text, app.service.menu); err != nil {
+			outOfstock, err := app.reserveProducts(userID, message.Text)
+			if err != nil {
 				return err
 			}
-			if err := app.reserveProducts(userID); err != nil {
-				return err
+			if outOfstock {
+				if _, err := app.bot.client.ReplyMessage(event.ReplyToken, makeOutOfStockMessage()).Do(); err != nil {
+					return err
+				}
 			}
 			if err := app.updateOrderInChat(userID, Order{Products: userSession.products}); err != nil {
 				return err
@@ -214,18 +216,22 @@ func (app *app) replyThankYou(event *linebot.Event, userID string) error {
 		return err
 	}
 
-	if err := app.sessionStore.deleteUserSession(userID); err != nil {
+	message, err := app.makeOrderDetail(userID)
+	if err != nil {
 		return err
 	}
 
-	if _, err := app.bot.client.ReplyMessage(event.ReplyToken, makeThankYouMessage()).Do(); err != nil {
+	if _, err := app.bot.client.ReplyMessage(event.ReplyToken, makeThankYouMessage(), message).Do(); err != nil {
+		return err
+	}
+	if err := app.sessionStore.deleteUserSession(userID); err != nil {
 		return err
 	}
 
 	return nil
 }
 func (app *app) replySorry(event *linebot.Event, userID string, cause string) error {
-	if _, err := app.bot.client.ReplyMessage(event.ReplyToken, makeSorryMessage(cause), makeReservationDateMessage()).Do(); err != nil {
+	if _, err := app.bot.client.ReplyMessage(event.ReplyToken, makeSorryMessage(cause)).Do(); err != nil {
 		return err
 	}
 
@@ -236,24 +242,34 @@ func (app *app) replySorry(event *linebot.Event, userID string, cause string) er
 	return nil
 }
 
+func (app *app) replyDenyWorkerLogin(event *linebot.Event, userID string) error {
+	message, err := app.makeDenyWorkerMessage(userID)
+	if err != nil {
+		return err
+	}
+	_, err = app.bot.client.ReplyMessage(event.ReplyToken, message).Do()
+	return err
+}
+
+func (app *app) replyWorkerPanel(event *linebot.Event, userID string) error {
+	_, err := app.bot.client.ReplyMessage(event.ReplyToken, makeWorkerPanelMessage(userID)).Do()
+	return err
+}
+
 func isTimeMessage(text string) bool {
 	timeFormat := "~"
 	return strings.Contains(text, timeFormat)
 }
 
-func (products Products) parseMessageToProductText(text string, menu Menu) error {
+func parseMessageToProductText(text string, menu Menu) (Products, error) {
+	p := make(Products)
 	i := strings.Index(text, "x")
 	n, err := strconv.Atoi(string(text[i+1:]))
 	if err != nil {
-		return fmt.Errorf("couldn't convert string to int: %v", err)
+		return nil, fmt.Errorf("couldn't convert string to int: %v", err)
 	}
 	id := menu.searchItemIDByName(string(text[:i]))
-	if products[id] != nil {
-		product := Product{Name: menu.searchItemNameByID(id), Stock: products[id].Stock + n, Reserved: false}
-		products[id] = &product
-		return nil
-	}
-	product := Product{Name: menu.searchItemNameByID(id), Stock: n, Reserved: false}
-	products[id] = &product
-	return nil
+
+	p[id] = &Product{Name: menu.searchItemNameByID(id), Stock: n, Reserved: false}
+	return p, nil
 }
