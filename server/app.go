@@ -6,13 +6,13 @@ import (
 	"strconv"
 	"time"
 
-	firebase "firebase.google.com/go"
+	"cloud.google.com/go/firestore"
 	"github.com/line/line-bot-sdk-go/linebot"
 )
 
 type app struct {
 	bot          *bot
-	client       *firebase.App
+	client       *firestore.Client
 	sessionStore *sessionStore
 	service      *service
 }
