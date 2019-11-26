@@ -138,7 +138,12 @@ func (app *app) getChatHandler(g *gin.Context) {
 	chatDoc, err := app.fetchOrderChats(chatID)
 	if err != nil {
 		g.Error(fmt.Errorf("coudln't fetch order chats in getChatHandler: %v", err))
+		g.Abort()
 	}
 
 	g.JSON(200, &chatDoc)
+}
+
+func healthcheckHandler(g *gin.Context) {
+	g.JSON(200, "ok!")
 }

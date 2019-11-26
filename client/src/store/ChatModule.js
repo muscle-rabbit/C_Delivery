@@ -18,7 +18,7 @@ const ChatModule = {
     async fetchChats({ commit }, id) {
       axios.defaults.baseURL = process.env.VUE_APP_API_ENDPOINT;
       await axios
-        .get(`/chats/${id}`)
+        .get(`/api/v1/chats/${id}`)
         .then(response => {
           commit("FETCH_CHATS", response.data);
         })
@@ -36,7 +36,7 @@ const ChatModule = {
       };
       axios.defaults.baseURL = process.env.VUE_APP_API_ENDPOINT;
       axios
-        .post(`/chats/${chatID}`, message)
+        .post(`/api/v1/chats/${chatID}`, message)
         // eslint-disable-next-line no-unused-vars
         .then(r => {
           dispatch("fetchChats", chatID);

@@ -509,7 +509,6 @@
     "github.com/line/line-bot-sdk-go/linebot",
     "golang.org/x/net/context",
     "google.golang.org/api/iterator",
-    "google.golang.org/api/option",
   ]
   solver-name = "gps-cdcl"
   solver-version = 1

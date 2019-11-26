@@ -1,18 +1,14 @@
 module.exports = {
-  transpileDependencies: ["vuetify"]
-};
-
-const webpack = require("webpack");
-module.exports = {
-  configureWebpack: {
-    plugins: [
-      new webpack.DefinePlugin({
-        VUE_APP_API_ENDPOINT: JSON.stringify(
-          process.env.VUE_APP_ENV === "production"
-            ? "/"
-            : "http://localhost:1964/"
-        )
-      })
-    ]
-  }
+  transpileDependencies: ["vuetify"],
+  outputDir: "../server/dist",
+  devServer:
+    process.env.NODE_ENV === "development"
+      ? {
+          proxy: {
+            "^/api": {
+              target: "http://localhost:1964"
+            }
+          }
+        }
+      : null
 };

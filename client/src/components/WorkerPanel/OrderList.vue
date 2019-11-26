@@ -71,8 +71,6 @@ export default {
         : 1;
     },
     chatRoomUrl: function(orderDoc) {
-      // eslint-disable-next-line no-console
-      console.log("userID is ", this.userID);
       let orderID = orderDoc.document_id;
       let chatID = orderDoc.order.chat_id;
       return `/user/${this.userID}/order/${orderID}/chats/${chatID}`;

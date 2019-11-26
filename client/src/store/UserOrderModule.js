@@ -19,7 +19,7 @@ const OrderModule = {
     fetchOrder({ commit }, order_id) {
       axios.defaults.baseURL = process.env.VUE_APP_API_ENDPOINT;
       axios
-        .get(`/order/${order_id}`)
+        .get(`/api/v1/order/${order_id}`)
         .then(response => {
           commit("FETCH_ORDER", response.data);
         })
