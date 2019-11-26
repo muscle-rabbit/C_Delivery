@@ -24,11 +24,9 @@ const WorkerPanelModule = {
     async fetchOrders({ commit }) {
       axios.defaults.baseURL = process.env.VUE_APP_API_ENDPOINT;
       await axios
-        .get("/order_list")
+        .get("/api/v1/order_list")
         .then(response => {
           commit("FETCH_ORDERS", response.data);
-          // eslint-disable-next-line no-console
-          console.log("fetched!");
         })
         .catch(error => {
           // eslint-disable-next-line no-console
@@ -38,7 +36,7 @@ const WorkerPanelModule = {
     async finishTrade({ commit }, orderID) {
       axios.defaults.baseURL = process.env.VUE_APP_API_ENDPOINT;
       await axios
-        .get(`/order/${orderID}/finish`)
+        .get(`/api/v1/order/${orderID}/finish`)
         .then(response => {
           commit("UPDATE_ORDER", response.data);
         })
@@ -50,9 +48,8 @@ const WorkerPanelModule = {
     async unfinishTrade({ commit }, orderID) {
       axios.defaults.baseURL = process.env.VUE_APP_API_ENDPOINT;
       await axios
-        .get(`/order/${orderID}/unfinish`)
+        .get(`/api/v1/order/${orderID}/unfinish`)
         .then(response => {
-          // eslint-disable-next-line no-console
           commit("UPDATE_ORDER", response.data);
         })
         .catch(e => {

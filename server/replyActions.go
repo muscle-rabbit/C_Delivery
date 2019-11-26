@@ -44,7 +44,7 @@ func (app *app) reply(event *linebot.Event, userID string) *appError {
 			return appErrorf(err, "couldn't reply Menu")
 		}
 	case setMenu:
-		if err := app.replyHalfConfirmation(event, userID); err != nil {
+		if err := app.replyLocation(event, userID); err != nil {
 			return appErrorf(err, "couldn't reply location")
 		}
 	case setLocation:
@@ -113,12 +113,7 @@ func (app *app) replyMenu(event *linebot.Event, userID string) error {
 			}
 			// 次のステップに移る。
 			userSession.prevStep = setMenu
-			message, err := app.makeHalfConfirmation(userID)
-			if err != nil {
-				return err
-			}
-
-			if _, err := app.bot.client.ReplyMessage(event.ReplyToken, message, makeConfirmationButtonMessage()).Do(); err != nil {
+			if err := app.replyLocation(event, userID); err != nil {
 				return err
 			}
 		} else {

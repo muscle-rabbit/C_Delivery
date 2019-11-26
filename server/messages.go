@@ -182,24 +182,6 @@ func makeUnselectedProductsMessage() *linebot.TextMessage {
 	return linebot.NewTextMessage("商品をお選びください。")
 }
 
-func (app *app) makeHalfConfirmation(userID string) (*linebot.TextMessage, error) {
-	userSession := app.sessionStore.sessions[userID]
-
-	if err := app.updateOrderInChat(userID, Order{TotalPrice: app.service.menu.calcPrice(userSession.products)}); err != nil {
-		return nil, err
-	}
-
-	orderDoc, err := app.fetchUserOrder(userSession.orderID)
-	if err != nil {
-		return nil, err
-	}
-
-	menuText := app.service.menu.makeMesssageText(userSession.products)
-	order := orderDoc.Order
-
-	return linebot.NewTextMessage(fmt.Sprintf("ご注文途中確認\n\nお間違いなければ次のステップに移ります。\n\n1. 日程 : %s\n2. 時間 : %s\n3. 品物: \n%s\n\n4. お会計 : ¥%d", order.Date, order.Time, menuText, app.service.menu.calcPrice(userSession.products))), nil
-}
-
 // makeLocation は 発送先用のメッセージを返すメソッドです。
 func (app *app) makeLocationMessage() *linebot.TemplateMessage {
 	title := "発送先指定"
@@ -449,43 +431,6 @@ func makeDecideButton() *linebot.BubbleContainer {
 		},
 	}
 }
-func (app *app) makeTest(userID string) *linebot.FlexMessage {
-	container := &linebot.BubbleContainer{
-		Type: "bubble",
-		Body: &linebot.BoxComponent{
-			Type:    linebot.FlexComponentTypeBox,
-			Layout:  linebot.FlexBoxLayoutTypeVertical,
-			Spacing: linebot.FlexComponentSpacingTypeMd,
-			Contents: []linebot.FlexComponent{
-				&linebot.TextComponent{
-					Type:    linebot.FlexComponentTypeText,
-					Text:    "配達員専用",
-					Wrap:    true,
-					Weight:  "bold",
-					Gravity: "center",
-					Size:    linebot.FlexTextSizeTypeXl,
-				},
-			},
-		},
-		Footer: &linebot.BoxComponent{
-			Type:   linebot.FlexComponentTypeBox,
-			Layout: linebot.FlexBoxLayoutTypeVertical,
-			Contents: []linebot.FlexComponent{
-				&linebot.SpacerComponent{
-					Type: linebot.FlexComponentTypeSpacer,
-					Size: linebot.FlexSpacerSizeTypeXs,
-				},
-				&linebot.ButtonComponent{
-					Type:   linebot.FlexComponentTypeButton,
-					Style:  linebot.FlexButtonStyleTypePrimary,
-					Color:  "#905c44",
-					Action: linebot.NewURIAction("開く", os.Getenv("LIFF_ENDPOINT")+"/user/"+userID+"/worker_panel"),
-				},
-			},
-		},
-	}
-	return linebot.NewFlexMessage("注文詳細", container)
-}
 
 func (app *app) makeOrderDetail(userID string) (*linebot.FlexMessage, error) {
 	userSession := app.sessionStore.sessions[userID]
@@ -494,7 +439,6 @@ func (app *app) makeOrderDetail(userID string) (*linebot.FlexMessage, error) {
 		return nil, err
 	}
 	order := orderDoc.Order
-	fmt.Println("url: ", os.Getenv("LIFF_ENDPOINT")+"/user/"+userID+"/order/"+userSession.orderID+"/chats/"+order.ChatID)
 
 	container := &linebot.BubbleContainer{
 		Type: "bubble",
@@ -639,7 +583,7 @@ func (app *app) makeOrderDetail(userID string) (*linebot.FlexMessage, error) {
 					Type:   linebot.FlexComponentTypeButton,
 					Style:  linebot.FlexButtonStyleTypePrimary,
 					Color:  "#905c44",
-					Action: linebot.NewURIAction("チャットを開始する。", os.Getenv("LIFF_ENDPOINT")+"/user/"+userID+"/order/"+userSession.orderID+"/chats/"+order.ChatID),
+					Action: linebot.NewURIAction("チャットを開始する。", os.Getenv("HOST_API")+"/#/?user="+userID+"&order="+userSession.orderID+"&chats="+order.ChatID),
 				},
 			},
 		},
@@ -677,12 +621,12 @@ func makeWorkerPanelMessage(userID string) *linebot.FlexMessage {
 					Type:   linebot.FlexComponentTypeButton,
 					Style:  linebot.FlexButtonStyleTypePrimary,
 					Color:  "#905c44",
-					Action: linebot.NewURIAction("開く", os.Getenv("LIFF_ENDPOINT")+"/user/"+userID+"/worker_panel"),
+					Action: linebot.NewURIAction("開く", os.Getenv("HOST_API")+"/#/?status=worker&user="+userID),
 				},
 			},
 		},
 	}
-	return linebot.NewFlexMessage("注文詳細", container)
+	return linebot.NewFlexMessage("配達員専用画面", container)
 }
 
 func (m Menu) calcPrice(products Products) int {

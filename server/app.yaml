@@ -1,0 +1,18 @@
+runtime: go112
+
+env_variables:
+  GOOGLE_APPLICATION_CREDENTIALS: "./firestore_credential/c-delivery-54b3d14d1ef1.json"
+
+handlers:
+- url: /
+  static_files: dist/index.html
+  upload: dist/index.html
+- url: /index.html
+  static_files: dist/index.html
+  upload: dist/index.html
+- url: /js
+  static_dir: dist/js
+- url: /css
+  static_dir: dist/css
+- url: /.*
+  script: auto

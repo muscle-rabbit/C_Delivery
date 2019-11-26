@@ -13,7 +13,7 @@ const UserModule = {
     fetchUser({ commit }, id) {
       axios.defaults.baseURL = process.env.VUE_APP_API_ENDPOINT;
       axios
-        .get(`/user/${id}`)
+        .get(`/api/v1/user/${id}`)
         .then(response => {
           commit("FETCH_USER", response.data);
         })

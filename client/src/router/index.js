@@ -3,6 +3,7 @@ import Router from "vue-router";
 import Chat from "@/components/Chat";
 import OrderList from "@/components/WorkerPanel/OrderList";
 import Home from "@/components/Home";
+import NotFound from "@/components/NotFound";
 
 Vue.use(Router);
 
@@ -24,7 +25,10 @@ export default new Router({
       name: "Chat",
       component: Chat,
       props: true
+    },
+    {
+      path: "*",
+      component: NotFound
     }
-  ],
-  mode: "history"
+  ]
 });
