@@ -6,21 +6,9 @@
       :class="{ own: message.user_id == ownID }"
       :key="index"
     >
-      <!-- <div
-        class="displayName"
-        v-if="index > 0 && chats.messages[index - 1].user_id != ownID"
-      >{{ message.user.displayName }}</div>-->
-      <!-- <div class="displayName" v-if="index == 0">{{ message.user.display_name }}</div> -->
-
-      <div
-        class="inner"
-        :class="message.user_id == ownID ? { own: true } : { other: true }"
-      >
+      <div class="inner" :class="message.user_id == ownID ? { own: true } : { other: true }">
         <div style="margin-top: 5px"></div>
-        <div
-          class="content"
-          :class="message.user_id == ownID ? { own: true } : { other: true }"
-        >
+        <div class="content" :class="message.user_id == ownID ? { own: true } : { other: true }">
           <div v-html="message.content"></div>
         </div>
         <div class="overline">{{ parseTime(message.created_at) }}</div>

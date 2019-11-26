@@ -31,9 +31,15 @@ func (app *app) callbackHandler(g *gin.Context) {
 			switch message := event.Message.(type) {
 			case *linebot.TextMessage:
 				if message.Text == "配達員ログイン" {
-					if ok := authWorker(userID); ok {
+					ok, err := app.authDeliverer(userID)
+					if err != nil {
+						g.Error(fmt.Errorf("couldn't auth worker user=%s: %v", userID, err))
+						g.Abort()
+					}
+					if ok {
 						if err := app.replyWorkerPanel(event, userID); err != nil {
 							g.Error(fmt.Errorf("couldn't return workerpanel: %v", err))
+							g.Abort()
 						}
 					}
 					if err := app.replyDenyWorkerLogin(event, userID); err != nil {
@@ -54,14 +60,6 @@ func (app *app) callbackHandler(g *gin.Context) {
 			}
 		}
 	}
-}
-
-func authWorker(userID string) bool {
-	autherID := "aa"
-	if userID == autherID {
-		return true
-	}
-	return false
 }
 
 func (app *app) getUserHandler(g *gin.Context) {

@@ -132,6 +132,26 @@ func (app *app) fetchUserByDocID(docID string) (User, error) {
 	return user, nil
 }
 
+func (app *app) authDeliverer(userID string) (bool, error) {
+	ctx := context.Background()
+	iter := app.client.Collection("deliverers").Where("user_id", "==", userID).Documents(ctx)
+	for {
+		doc, err := iter.Next()
+		if err == iterator.Done {
+			if doc == nil {
+				// 配達員がマッチしなかったら false を返す。
+				return false, nil
+			}
+			break
+		}
+		if err != nil {
+			return false, err
+		}
+		return true, nil
+	}
+	return false, nil
+}
+
 func (app *app) fetchUserByLINEProfile(profile *linebot.UserProfileResponse) (string, error) {
 	ctx := context.Background()
 

@@ -25,7 +25,7 @@ func main() {
 	// gin の生成。静的ファイルサーバー
 	r := gin.Default()
 
-	r.GET("/healthcheck", healthcheckHandler)
+	r.GET("/api/v1/healthcheck", healthcheckHandler)
 
 	// linebot のリクエストエンドポイント
 	r.POST("/api/v1/callback", app.callbackHandler)
@@ -49,6 +49,5 @@ func main() {
 
 	port := os.Getenv("PORT")
 	addr := fmt.Sprintf(":%s", port)
-	fmt.Println("listening... :", addr)
 	r.Run(addr)
 }
