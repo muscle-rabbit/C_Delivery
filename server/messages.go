@@ -9,41 +9,58 @@ import (
 	"github.com/line/line-bot-sdk-go/linebot"
 )
 
-type Item struct {
-	ID         string
+type Menu []ProductDocument
+
+type ProductItem struct {
 	Name       string `firestore:"name,omitempty"`
 	Price      int    `firestore:"price,omitempty"`
 	PictureURL string `firestore:"picture_url,omitempty"`
 }
 
-type Menu []Item
+// Products は Message API と共有する製品情報です。
+type Products map[string]*Product
 
-func (m Menu) searchItemByName(key string) Item {
-	for _, item := range m {
-		if item.Name == key {
-			return item
+// Product は ユーザのセッションで保持する製品情報をまとめた構造体です。
+type Product struct {
+	Name     string `firestore:"name,omitempty" json:"name"`
+	Stock    int    `firestore:"stock,omitempty" json:"stock"`
+	Reserved bool   `firestore:"reserved,omitempty" json:"reserved"`
+}
+
+type ProductDocument struct {
+	ID          string
+	ProductItem ProductItem
+}
+
+func (m Menu) searchProductByName(key string) (ProductDocument, error) {
+	for _, doc := range m {
+		if doc.ProductItem.Name == key {
+			return doc, nil
 		}
 	}
 	// TODO: nil を返したい。
-	return Item{}
+	return ProductDocument{}, fmt.Errorf("This product doesn't exist in Menu: %s", key)
 }
 
-func (m Menu) searchItemIDByName(key string) string {
-	for _, item := range m {
-		if item.Name == key {
-			return item.ID
+func (m Menu) searcProductByID(id string) (ProductDocument, error) {
+	for _, doc := range m {
+		if doc.ID == id {
+			return doc, nil
 		}
 	}
-	return ""
+	return ProductDocument{}, fmt.Errorf("This product doesn't exist in Menu: %", id)
 }
 
-func (m Menu) searchItemNameByID(id string) string {
-	for _, item := range m {
-		if item.ID == id {
-			return item.Name
+func (m Menu) calcPrice(products Products) int {
+	var price int
+	for id, product := range products {
+		for _, v := range m {
+			if v.ID == id {
+				price += v.ProductItem.Price * product.Stock
+			}
 		}
 	}
-	return ""
+	return price
 }
 
 var wdays = [...]string{"日", "月", "火", "水", "木", "金", "土"}
@@ -158,12 +175,12 @@ func (app *app) makeMenuMessage() (*linebot.FlexMessage, error) {
 	if err != nil {
 		return nil, err
 	}
-	for _, item := range app.service.menu {
-		stock, err := stockDocs.searchDocByProductID(item.ID)
+	for _, productDoc := range app.service.menu {
+		stock, err := stockDocs.searchDocByProductID(productDoc.ID)
 		if err != nil {
 			return nil, err
 		}
-		containers = append(containers, makeMenuCard(item, stock.Stock))
+		containers = append(containers, makeMenuCard(productDoc.ProductItem, stock.Stock))
 	}
 	carousel := &linebot.CarouselContainer{
 		Type:     linebot.FlexContainerTypeCarousel,
@@ -202,7 +219,11 @@ func (app *app) makeConfirmationTextMessage(userID string) (*linebot.TextMessage
 	menu := app.service.menu
 	userSession := app.sessionStore.sessions[userID]
 	for id, product := range userSession.products {
-		menuText += "・" + menu.searchItemNameByID(id) + " x " + strconv.Itoa(product.Stock) + "\n"
+		productDoc, err := menu.searcProductByID(id)
+		if err != nil {
+			return nil, err
+		}
+		menuText += "・" + productDoc.ProductItem.Name + "x" + strconv.Itoa(product.Stock) + "\n"
 	}
 
 	orderDoc, err := app.fetchUserOrder(userSession.orderID)
@@ -250,7 +271,7 @@ func (app *app) makeDenyWorkerMessage(userID string) (*linebot.TextMessage, erro
 	return linebot.NewTextMessage(user.DisplayName + "さんは配達員として登録されていないため、ログインできませんでした。"), nil
 }
 
-func makeMenuCard(item Item, stock int) *linebot.BubbleContainer {
+func makeMenuCard(item ProductItem, stock int) *linebot.BubbleContainer {
 	return &linebot.BubbleContainer{
 		Type: "bubble",
 		Hero: &linebot.ImageComponent{
@@ -439,6 +460,10 @@ func (app *app) makeOrderDetail(userID string) (*linebot.FlexMessage, error) {
 		return nil, err
 	}
 	order := orderDoc.Order
+	text, err := app.service.menu.makeMesssageText(order.Products)
+	if err != nil {
+		return nil, err
+	}
 
 	container := &linebot.BubbleContainer{
 		Type: "bubble",
@@ -539,7 +564,7 @@ func (app *app) makeOrderDetail(userID string) (*linebot.FlexMessage, error) {
 								&linebot.TextComponent{
 									Type:  linebot.FlexComponentTypeText,
 									Wrap:  true,
-									Text:  app.service.menu.makeMesssageText(order.Products),
+									Text:  text,
 									Color: "#666666",
 									Size:  linebot.FlexTextSizeTypeSm,
 									Flex:  linebot.IntPtr(4),
@@ -629,14 +654,6 @@ func makeWorkerPanelMessage(userID string) *linebot.FlexMessage {
 	return linebot.NewFlexMessage("配達員専用画面", container)
 }
 
-func (m Menu) calcPrice(products Products) int {
-	var price int
-	for id, product := range products {
-		for _, v := range m {
-			if v.ID == id {
-				price += v.Price * product.Stock
-			}
-		}
-	}
-	return price
+func makeAskCorrectMessages() *linebot.TextMessage {
+	return linebot.NewTextMessage("表示された項目からお選びください。")
 }

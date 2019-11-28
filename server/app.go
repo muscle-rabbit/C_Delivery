@@ -59,12 +59,6 @@ type detailTime struct {
 	minute int
 }
 
-// map[{products Document の ID}] 個数
-// type sessionOrderedProducts map[string]int
-
-// map[{products Document の ID}] 製品情報
-type Products map[string]*Product
-
 func (products Products) setProduct(p Products) error {
 	for id, product := range p {
 		if products[id] != nil {
@@ -77,18 +71,16 @@ func (products Products) setProduct(p Products) error {
 	return fmt.Errorf("couldn't set prodct in session")
 }
 
-func (menu Menu) makeMesssageText(p Products) string {
+func (menu Menu) makeMesssageText(p Products) (string, error) {
 	var menuText string
 	for id, product := range p {
-		menuText += "・" + menu.searchItemNameByID(id) + " x " + strconv.Itoa(product.Stock) + "\n"
+		doc, err := menu.searcProductByID(id)
+		if err != nil {
+			return "", err
+		}
+		menuText += "・" + doc.ProductItem.Name + " x " + strconv.Itoa(product.Stock) + "\n"
 	}
-	return menuText
-}
-
-type Product struct {
-	Name     string `firestore:"name,omitempty" json:"name"`
-	Stock    int    `firestore:"stock,omitempty" json:"stock"`
-	Reserved bool   `firestore:"reserved,omitempty" json:"reserved"`
+	return menuText, nil
 }
 
 func (ss *sessionStore) createSession(userID string) *userSession {

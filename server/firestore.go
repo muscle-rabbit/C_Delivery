@@ -79,7 +79,7 @@ func newApp() (*app, error) {
 	}
 
 	// 商品情報の取得。
-	menu, err := app.getMenu()
+	menu, err := app.fetchProducts()
 	if err != nil {
 		return nil, fmt.Errorf("couldn't get Menu : %v", err)
 	}
@@ -232,16 +232,21 @@ func (app *app) updateOrderInChat(userID string, order Order) error {
 	switch prevStep {
 	case reservateDate:
 		willUpdated = "date"
+		break
 	case reservateTime:
-		if isTimeMessage(order.Time) {
-			willUpdated = "time"
-		} else {
-			willUpdated = "products"
-		}
-	case setLocation:
-		willUpdated = "location"
-	case setMenu:
+		willUpdated = "time"
+		break
+	case selectProduct:
+		willUpdated = "products"
+		break
+	case decideProduct:
 		willUpdated = "total_price"
+		break
+	case selectLocation:
+		willUpdated = "location"
+		break
+	default:
+		return fmt.Errorf("couldn't match any prevSteps")
 	}
 
 	if _, err := app.client.Collection("orders").Doc(userSession.orderID).Set(ctx, order, firestore.Merge([]string{willUpdated})); err != nil {
@@ -391,25 +396,26 @@ func (app *app) fetchStocks() (StockDocuments, error) {
 	return stockDocs, nil
 }
 
-func (app *app) fetchProduct(productID string) (Item, error) {
+func (app *app) fetchProduct(productID string) (ProductDocument, error) {
 	ctx := context.Background()
 
 	doc, err := app.client.Collection("products").Doc(productID).Get(ctx)
 	if err != nil {
-		return Item{}, fmt.Errorf("couldn't get document in fetchProduct: %v", err)
+		return ProductDocument{}, fmt.Errorf("couldn't get document in fetchProduct: %v", err)
 	}
 
-	var item Item
-	if err := doc.DataTo(&item); err != nil {
-		return Item{}, err
+	var prdItem ProductItem
+	if err := doc.DataTo(&prdItem); err != nil {
+		return ProductDocument{}, err
 	}
 
-	return item, err
+	return ProductDocument{ID: doc.Ref.ID, ProductItem: prdItem}, err
 }
 
-func (app *app) getMenu() (Menu, error) {
-	var menu Menu
+func (app *app) fetchProducts() ([]ProductDocument, error) {
 	ctx := context.Background()
+
+	var docs []ProductDocument
 
 	iter := app.client.Collection("products").Documents(ctx)
 	for {
@@ -420,15 +426,16 @@ func (app *app) getMenu() (Menu, error) {
 		if err != nil {
 			return nil, err
 		}
-		var item Item
-		if err := doc.DataTo(&item); err != nil {
+		var prdItem ProductItem
+		if err := doc.DataTo(&prdItem); err != nil {
 			return nil, err
 		}
-		item.ID = doc.Ref.ID
-		menu = append(menu, item)
+
+		docs = append(docs, ProductDocument{ID: doc.Ref.ID, ProductItem: prdItem})
+
 	}
 
-	return menu, nil
+	return docs, nil
 }
 
 func (app *app) getLocations() ([]Location, error) {
