@@ -47,15 +47,8 @@ func (app *app) callbackHandler(g *gin.Context) {
 					}
 
 				}
-				if app.sessionStore.sessions[userID] != nil {
-					if err := app.reply(event, userID); err != nil {
-						g.Error(fmt.Errorf("couldn't start order: %v", err))
-					}
-				}
-				if message.Text == "予約開始" {
-					if err := app.reply(event, userID); err != nil {
-						g.Error(fmt.Errorf("couldn't start order: %v", err))
-					}
+				if err := app.reply(event, userID); err != nil {
+					g.Error(fmt.Errorf("couldn't process order message: %v", err))
 				}
 			}
 		}
