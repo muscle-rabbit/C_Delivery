@@ -30,8 +30,12 @@ func validateLocation(text string, locations []Location) bool {
 	// 例: 6号館 1F
 	for _, location := range locations {
 		if text == location.Name {
-			return false
+			return true
 		}
 	}
 	return false
+}
+
+func validateConfirmation(text string) bool {
+	return text == "はい" || text == "いいえ"
 }

@@ -286,6 +286,9 @@ func (app *app) validateMessage(event *linebot.Event, text string, userID string
 	case selectLocation:
 		ok = validateLocation(text, app.service.locations)
 		break
+	case confirm:
+		ok = validateConfirmation(text)
+		break
 	default:
 		err = fmt.Errorf("couldn't match any prevStep")
 	}
